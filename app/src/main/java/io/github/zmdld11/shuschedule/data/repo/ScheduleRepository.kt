@@ -54,6 +54,12 @@ class ScheduleRepository @Inject constructor(
 
     suspend fun upsertTimeSlot(slot: TimeSlot) = timeSlotDao.upsertAll(listOf(slot))
 
+    /** 恢复默认 12 节作息（覆盖手动修改） */
+    suspend fun resetTimeSlots() = db.withTransaction {
+        timeSlotDao.deleteAll()
+        timeSlotDao.upsertAll(TimeSlotDefaults.all)
+    }
+
     /** 全量快照（备份导出用） */
     suspend fun backupSnapshot(): BackupCodec.Snapshot = db.withTransaction {
         val snapshot = mutableListOf<Pair<Semester, List<Pair<Course, List<CourseSession>>>>>()

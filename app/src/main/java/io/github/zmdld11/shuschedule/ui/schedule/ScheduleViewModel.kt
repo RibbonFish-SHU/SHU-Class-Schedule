@@ -51,6 +51,14 @@ class ScheduleViewModel @Inject constructor(
     val showOffWeek: StateFlow<Boolean> =
         settings.showOffWeek.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
+    /** 周视图是否显示周六周日（默认只显示工作日） */
+    val showWeekend: StateFlow<Boolean> =
+        settings.showWeekend.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    /** 节次时间列是否显示下课时间 */
+    val showSlotEnd: StateFlow<Boolean> =
+        settings.showSlotEnd.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
     private val _semesterFlow = repository.observeActiveSemester()
 
     val state: StateFlow<ScheduleUiState> = _semesterFlow
