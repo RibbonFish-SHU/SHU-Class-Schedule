@@ -20,6 +20,9 @@ interface SemesterDao {
     @Query("SELECT * FROM semesters ORDER BY year DESC, term ASC")
     fun observeAll(): Flow<List<Semester>>
 
+    @Query("SELECT * FROM semesters ORDER BY year DESC, term ASC")
+    suspend fun getAll(): List<Semester>
+
     @Query("SELECT * FROM semesters WHERE isActive = 1 LIMIT 1")
     fun observeActive(): Flow<Semester?>
 
