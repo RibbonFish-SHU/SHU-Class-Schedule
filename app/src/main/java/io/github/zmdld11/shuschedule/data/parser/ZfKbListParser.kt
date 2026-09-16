@@ -15,6 +15,7 @@ data class ParsedSession(
     val weekText: String,
     val room: String,
     val teacher: String,
+    val campus: String = "",
 )
 
 /** 一门课（按 kch + jxb_id 聚合）及其全部排课记录 */
@@ -72,6 +73,7 @@ object ZfKbListParser {
                 weekText = zcd,
                 room = o.str("cdmc").orEmpty(),
                 teacher = o.str("xm").orEmpty(),
+                campus = o.str("xqumc").ifNullOr { o.str("xqmc") }.orEmpty(),
             )
             val key = "${courseCode}|$classId"
             byClassKey.getOrPut(key) {

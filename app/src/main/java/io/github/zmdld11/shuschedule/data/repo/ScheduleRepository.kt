@@ -150,6 +150,7 @@ class ScheduleRepository @Inject constructor(
                         weeksMask = it.weeksMask,
                         room = it.room,
                         teacher = it.teacher,
+                        campus = it.campus,
                     )
                 }
             )

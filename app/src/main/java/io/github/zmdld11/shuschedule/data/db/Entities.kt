@@ -91,6 +91,8 @@ data class CourseSession(
     val room: String,
     /** xm 教师 */
     val teacher: String,
+    /** 校区（kbList 若返回 xqumc/xqmc 则入库，可能为空串） */
+    val campus: String = "",
 ) {
     fun hasWeek(week: Int): Boolean = week in 1..MAX_WEEKS && (weeksMask and (1 shl (week - 1))) != 0
 

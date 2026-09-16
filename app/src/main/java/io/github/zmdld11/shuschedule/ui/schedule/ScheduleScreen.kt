@@ -220,16 +220,33 @@ fun ScheduleScreen(
                                         maxLines = if (span >= 2) 3 else 1,
                                         overflow = TextOverflow.Ellipsis,
                                     )
-                                    if (span >= 2 && block.session.room.isNotBlank()) {
-                                        Text(
-                                            "@${block.session.room}",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontSize = 9.sp,
-                                            lineHeight = 11.sp,
-                                            color = CoursePalette.onContainer(block.course.course.colorIndex),
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                        )
+                                    if (span >= 2) {
+                                        val place = listOf(
+                                            block.session.campus.takeIf { it.isNotBlank() },
+                                            block.session.room.takeIf { it.isNotBlank() }?.let { "@$it" },
+                                        ).filterNotNull().joinToString("·")
+                                        if (place.isNotBlank()) {
+                                            Text(
+                                                place,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontSize = 9.sp,
+                                                lineHeight = 11.sp,
+                                                color = CoursePalette.onContainer(block.course.course.colorIndex),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                            )
+                                        }
+                                        if (block.session.teacher.isNotBlank()) {
+                                            Text(
+                                                block.session.teacher,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontSize = 9.sp,
+                                                lineHeight = 11.sp,
+                                                color = CoursePalette.onContainer(block.course.course.colorIndex),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -324,6 +341,7 @@ private fun SessionRow(session: CourseSession, currentWeek: Int) {
             Text(
                 listOf(
                     formatWeeks(CourseSession.weeksOf(session.weeksMask)),
+                    session.campus.takeIf { it.isNotBlank() },
                     session.room,
                     session.teacher,
                 ).filter { it.isNotBlank() }.joinToString(" · "),

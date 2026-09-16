@@ -13,7 +13,7 @@ class ZfKbListParserTest {
       "kbList": [
         {
           "kcmc": "数据结构", "kch": "CS1001", "jxbmc": "数据结构-01", "jxb_id": "9100001",
-          "xm": "张三", "zcmc": "计算机学院", "cdmc": "BJ103", "cdlbmc": "教学楼",
+          "xm": "张三", "zcmc": "计算机学院", "cdmc": "BJ103", "cdlbmc": "教学楼", "xqumc": "宝山",
           "xqj": "1", "xqjmc": "星期一", "jc": "第1-2节", "jcs": "1-2", "zcd": "1-8周", "xf": "4"
         },
         {
@@ -61,10 +61,12 @@ class ZfKbListParserTest {
         assertEquals(2, monday.endNode)
         assertEquals("BJ103", monday.room)
         assertEquals("张三", monday.teacher)
+        assertEquals("宝山", monday.campus)
         assertEquals((1..8).toList(), CourseSession.weeksOf(monday.weeksMask).sorted())
 
         val wednesday = ds.sessions.first { it.weekday == 3 }
         assertEquals("实验楼404", wednesday.room)
+        assertEquals("", wednesday.campus)
         assertEquals((2..16 step 2).toList(), CourseSession.weeksOf(wednesday.weeksMask).sorted())
     }
 

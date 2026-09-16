@@ -58,6 +58,7 @@ object BackupCodec {
         @SerialName("weeks") val weeksList: List<Int> = emptyList(),
         val room: String = "",
         val teacher: String = "",
+        val campus: String = "",
     )
 
     @Serializable
@@ -95,6 +96,7 @@ object BackupCodec {
                                     weeksList = CourseSession.weeksOf(s.weeksMask).sorted(),
                                     room = s.room,
                                     teacher = s.teacher,
+                                    campus = s.campus,
                                 )
                             },
                         )
@@ -137,6 +139,7 @@ object BackupCodec {
                             weeksMask = CourseSession.maskOf(s.weeksList),
                             room = s.room,
                             teacher = s.teacher,
+                            campus = s.campus,
                         )
                     }
                 }
