@@ -59,6 +59,7 @@ object BackupCodec {
         val room: String = "",
         val teacher: String = "",
         val campus: String = "",
+        val rescheduled: Boolean = false,
     )
 
     @Serializable
@@ -97,6 +98,7 @@ object BackupCodec {
                                     room = s.room,
                                     teacher = s.teacher,
                                     campus = s.campus,
+                                    rescheduled = s.rescheduled,
                                 )
                             },
                         )
@@ -140,6 +142,7 @@ object BackupCodec {
                             room = s.room,
                             teacher = s.teacher,
                             campus = s.campus,
+                            rescheduled = s.rescheduled,
                         )
                     }
                 }

@@ -228,6 +228,7 @@ class ScheduleRepository @Inject constructor(
                         room = it.room,
                         teacher = it.teacher,
                         campus = it.campus,
+                        rescheduled = it.rescheduled,
                     )
                 }
             )

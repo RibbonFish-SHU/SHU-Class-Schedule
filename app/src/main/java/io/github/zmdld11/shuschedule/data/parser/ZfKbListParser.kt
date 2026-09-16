@@ -16,6 +16,8 @@ data class ParsedSession(
     val room: String,
     val teacher: String,
     val campus: String = "",
+    /** 教务调课记录的 zcd 形如「第13周」（真机 kbList 实测），据此打标 */
+    val rescheduled: Boolean = false,
 )
 
 /** 一门课（按 kch + jxb_id 聚合）及其全部排课记录 */
@@ -77,6 +79,7 @@ object ZfKbListParser {
                 room = o.str("cdmc").orEmpty(),
                 teacher = o.str("xm").orEmpty(),
                 campus = o.str("xqumc").ifNullOr { o.str("xqmc") }.orEmpty(),
+                rescheduled = zcd.trim().startsWith("第"),
             )
             val key = "${courseCode}|$classId"
             byClassKey.getOrPut(key) {

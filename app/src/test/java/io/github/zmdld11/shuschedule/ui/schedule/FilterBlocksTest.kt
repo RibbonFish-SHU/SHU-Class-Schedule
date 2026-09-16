@@ -69,4 +69,43 @@ class FilterBlocksTest {
         val blocks = filterBlocks(multi, week = 1, weekday = 1, includeOffWeek = false)
         assertEquals(listOf("A课", "B课"), blocks.map { it.course.course.name })
     }
+
+    @Test
+    fun occupiedSlotSuppressesOffWeekBlocks() {
+        // 同槽位：张瑞第1周（过去）+ 钱权2-8周 + 算法9-16周，浏览第3周 → 只显示本周的钱权
+        val courses = listOf(
+            course("计算机网络", session(4, 3, 4, CourseSession.maskOf(listOf(1))), session(4, 3, 4, CourseSession.maskOf((2..8).toList()))),
+            course("算法设计与分析", session(4, 3, 4, CourseSession.maskOf((9..16).toList()))),
+        )
+        val thu = filterBlocks(courses, week = 3, weekday = 4, includeOffWeek = true)
+        assertEquals(1, thu.size)
+        assertEquals("计算机网络", thu.single().course.course.name)
+        assertEquals(true, thu.single().inWeek)
+    }
+
+    @Test
+    fun emptySlotShowsNearestFutureOnly() {
+        // 周三9-10 算法 9-15周(单)，浏览双数第10周 → 无本周课，最近未来是第11周 → 置灰显示
+        val courses = listOf(course("算法", session(3, 9, 10, CourseSession.maskOf((9..15 step 2).toList()))))
+        val wed = filterBlocks(courses, week = 10, weekday = 3, includeOffWeek = true)
+        assertEquals(1, wed.size)
+        assertEquals(false, wed.single().inWeek)
+
+        // 同槽位另一门只在第4周 → 浏览第2周时应显示更近的第4周那门，而非第9周
+        val two = listOf(
+            course("早课", session(3, 9, 10, CourseSession.maskOf(listOf(4)))),
+            course("晚课", session(3, 9, 10, CourseSession.maskOf((9..16).toList()))),
+        )
+        val nearest = filterBlocks(two, week = 2, weekday = 3, includeOffWeek = true)
+        assertEquals(1, nearest.size)
+        assertEquals("早课", nearest.single().course.course.name)
+    }
+
+    @Test
+    fun noFutureOccurrenceShowsNothing() {
+        // 只在前2周有课，浏览第5周开非本周 → 不显示
+        val courses = listOf(course("完结课", session(1, 1, 2, CourseSession.maskOf((1..2).toList()))))
+        val mon = filterBlocks(courses, week = 5, weekday = 1, includeOffWeek = true)
+        assertEquals(0, mon.size)
+    }
 }

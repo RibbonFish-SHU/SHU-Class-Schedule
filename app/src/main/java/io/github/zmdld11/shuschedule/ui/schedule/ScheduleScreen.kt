@@ -1,6 +1,13 @@
 package io.github.zmdld11.shuschedule.ui.schedule
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -194,38 +201,14 @@ fun ScheduleScreen(
                 ) { Text("›", style = MaterialTheme.typography.titleLarge) }
             }
 
-            // 表头：星期 + 日期
+            // 表头 + 网格（切周滑动动画：前进周从右滑入，后退周从左滑入）
             val today = LocalDate.now()
-            Row(Modifier.fillMaxWidth()) {
-                Spacer(Modifier.width(40.dp))
-                repeat(dayCount) { i ->
-                    val date = state.dateOf(week, i + 1)
-                    val isToday = date == today
-                    Column(
-                        Modifier.weight(1f).padding(vertical = 2.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        Text(
-                            DAY_CHARS[i],
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = if (isToday) FontWeight.Bold else null,
-                            color = if (isToday) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                        )
-                        Text(
-                            date?.let { "${it.monthValue}/${it.dayOfMonth}" } ?: "",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = if (isToday) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-            }
-
-            // 网格主体
             val nodeCount = maxOf(state.timeSlots.size, state.courses.maxOfOrNull { c -> c.sessions.maxOfOrNull { it.endNode } ?: 0 } ?: 0, 10)
             // 左滑下一周 / 右滑上一周（阈值防误触；垂直滚动不受影响）
             val weekNow = rememberUpdatedState(week)
             val totalWeeksNow = semester.totalWeeks
-            Row(
+            val gridScroll = rememberScrollState()
+            Box(
                 Modifier
                     .fillMaxSize()
                     .pointerInput(totalWeeksNow) {
@@ -242,9 +225,43 @@ fun ScheduleScreen(
                             },
                             onDragCancel = { acc = 0f },
                         ) { _, dragAmount -> acc += dragAmount }
-                    }
-                    .verticalScroll(rememberScrollState()),
+                    },
             ) {
+                AnimatedContent(
+                    targetState = week,
+                    transitionSpec = {
+                        val forward = targetState > initialState
+                        (slideInHorizontally { if (forward) it else -it } + fadeIn()) togetherWith
+                            (slideOutHorizontally { if (forward) -it else it } + fadeOut())
+                    },
+                    label = "weekTransition",
+                ) { w ->
+                    Column(Modifier.fillMaxSize()) {
+                        // 表头：星期 + 日期
+                        Row(Modifier.fillMaxWidth()) {
+                            Spacer(Modifier.width(40.dp))
+                            repeat(dayCount) { i ->
+                                val date = state.dateOf(w, i + 1)
+                                val isToday = date == today
+                                Column(
+                                    Modifier.weight(1f).padding(vertical = 2.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                ) {
+                                    Text(
+                                        DAY_CHARS[i],
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = if (isToday) FontWeight.Bold else null,
+                                        color = if (isToday) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                                    )
+                                    Text(
+                                        date?.let { "${it.monthValue}/${it.dayOfMonth}" } ?: "",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = if (isToday) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                        }
+                        Row(Modifier.fillMaxSize().verticalScroll(gridScroll)) {
                 // 左侧节次时间列
                 Column(Modifier.width(40.dp)) {
                     repeat(nodeCount) { i ->
@@ -272,7 +289,7 @@ fun ScheduleScreen(
                 // 课程列（工作日 5 列，开关开周末 7 列）
                 repeat(dayCount) { dayIdx ->
                     val weekday = dayIdx + 1
-                    val blocks = viewModel.blocksFor(week, weekday, showOffWeek)
+                    val blocks = viewModel.blocksFor(w, weekday, showOffWeek)
                     Box(Modifier.weight(1f).height(CELL_HEIGHT * nodeCount)) {
                         blocks.forEach { block ->
                             val span = block.session.endNode - block.session.startNode + 1
@@ -334,9 +351,31 @@ fun ScheduleScreen(
                                                 overflow = TextOverflow.Ellipsis,
                                             )
                                         }
+                                        if (block.session.rescheduled) {
+                                            // 调课徽标：描边小标签，与正文文字区分
+                                            Text(
+                                                "调课",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontSize = 8.sp,
+                                                lineHeight = 10.sp,
+                                                color = CoursePalette.onContainer(block.course.course.colorIndex),
+                                                modifier = Modifier
+                                                    .padding(top = 1.dp)
+                                                    .clip(RoundedCornerShape(3.dp))
+                                                    .border(
+                                                        0.75.dp,
+                                                        CoursePalette.onContainer(block.course.course.colorIndex).copy(alpha = 0.6f),
+                                                        RoundedCornerShape(3.dp),
+                                                    )
+                                                    .padding(horizontal = 2.dp),
+                                            )
+                                        }
                                     }
                                 }
                             }
+                        }
+                    }
+                }
                         }
                     }
                 }
@@ -469,10 +508,24 @@ private fun SessionRow(session: CourseSession, currentWeek: Int, onClick: () -> 
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Column(Modifier.weight(1f)) {
-            Text(
-                "周${DAY_CHARS[session.weekday - 1]} 第${session.startNode}-${session.endNode}节",
-                style = MaterialTheme.typography.bodyMedium,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "周${DAY_CHARS[session.weekday - 1]} 第${session.startNode}-${session.endNode}节",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                if (session.rescheduled) {
+                    Text(
+                        "调课",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer,
+                        modifier = Modifier
+                            .padding(start = 6.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(MaterialTheme.colorScheme.tertiaryContainer)
+                            .padding(horizontal = 5.dp, vertical = 1.dp),
+                    )
+                }
+            }
             Text(
                 listOfNotNull(
                     formatWeeks(CourseSession.weeksOf(session.weeksMask)),

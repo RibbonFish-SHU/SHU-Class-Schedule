@@ -239,17 +239,41 @@ class ScheduleViewModel @Inject constructor(
         filterBlocks(state.value.courses, week, weekday, includeOffWeek)
 }
 
-/** 纯函数便于单测：按周/星期过滤排课块 */
+/** 纯函数便于单测：按周/星期过滤排课块
+ *
+ * 非本周显示（includeOffWeek=true）的槽位级规则：
+ * - 本周该时段有课 → 只显示本周的课（非本周的同槽位一律不显示，避免叠块）
+ * - 本周该时段无课 → 置灰显示最近一次未来出现的课（调课周自然显示调课记录）
+ * - 该时段之后再也没有课 → 不显示
+ */
 fun filterBlocks(
     courses: List<CourseWithSessions>,
     week: Int,
     weekday: Int,
     includeOffWeek: Boolean,
 ): List<ScheduleViewModel.DayBlock> {
-    val all = courses
-        .flatMap { c -> c.sessions.map { ScheduleViewModel.DayBlock(c, it, it.hasWeek(week)) } }
-        .filter { it.session.weekday == weekday }
-    return (if (includeOffWeek) all else all.filter { it.inWeek })
+    val inWeek = mutableListOf<ScheduleViewModel.DayBlock>()
+    val offBySlot = mutableMapOf<Pair<Int, Int>, MutableList<ScheduleViewModel.DayBlock>>()
+    courses.forEach { c ->
+        c.sessions.filter { it.weekday == weekday }.forEach { s ->
+            val block = ScheduleViewModel.DayBlock(c, s, s.hasWeek(week))
+            if (block.inWeek) {
+                inWeek += block
+            } else if (includeOffWeek) {
+                offBySlot.getOrPut(s.startNode to s.endNode) { mutableListOf() } += block
+            }
+        }
+    }
+    val occupiedSlots = inWeek.map { it.session.startNode to it.session.endNode }.toSet()
+    val nearestFuturePerEmptySlot = offBySlot
+        .filterKeys { it !in occupiedSlots }
+        .mapNotNull { (_, blocks) ->
+            blocks.mapNotNull { b ->
+                CourseSession.weeksOf(b.session.weeksMask).filter { it > week }.minOrNull()
+                    ?.let { nextWeek -> b to nextWeek }
+            }.minByOrNull { it.second }?.first
+        }
+    return (inWeek + nearestFuturePerEmptySlot)
         .sortedWith(compareBy({ it.session.startNode }, { it.course.course.name }))
 }
 
