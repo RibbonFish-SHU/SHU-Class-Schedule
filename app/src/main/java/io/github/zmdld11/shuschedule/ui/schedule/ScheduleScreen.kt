@@ -6,6 +6,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -40,7 +41,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -55,6 +55,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -62,8 +63,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import io.github.zmdld11.shuschedule.R
 import io.github.zmdld11.shuschedule.data.db.CourseSession
 import io.github.zmdld11.shuschedule.data.db.CourseWithSessions
+import io.github.zmdld11.shuschedule.data.settings.AppTheme
+import io.github.zmdld11.shuschedule.ui.theme.LocalScheduleStyle
+import io.github.zmdld11.shuschedule.ui.theme.ScheduleScaffold
+import io.github.zmdld11.shuschedule.ui.theme.ThemeDialogSystemBars
 import java.time.LocalDate
 
 private val CELL_HEIGHT = 52.dp
@@ -77,6 +83,7 @@ fun ScheduleScreen(
     onSemesters: () -> Unit,
     viewModel: ScheduleViewModel = hiltViewModel(),
 ) {
+    val scheduleStyle = LocalScheduleStyle.current
     val state by viewModel.state.collectAsStateWithLifecycle()
     val selectedWeek by viewModel.selectedWeek.collectAsStateWithLifecycle()
     val detail by viewModel.detailCourse.collectAsStateWithLifecycle()
@@ -98,7 +105,7 @@ fun ScheduleScreen(
 
     val semester = state.semester
 
-    Scaffold(
+    ScheduleScaffold(
         topBar = {
             var semesterMenu by remember { mutableStateOf(false) }
             TopAppBar(
@@ -110,6 +117,7 @@ fun ScheduleScreen(
                             semester?.displayName ?: "上大课表",
                             style = MaterialTheme.typography.titleMedium,
                             maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
                         Text(
                             if (semester == null) "去导入第一张课表吧" else "第 $week / ${semester.totalWeeks} 周${if (week == currentWeek) " · 本周" else ""}",
@@ -140,6 +148,15 @@ fun ScheduleScreen(
                         }
                     }
                 },
+                navigationIcon = {
+                    if (scheduleStyle.theme == AppTheme.ARKNIGHTS) {
+                        Image(
+                            painterResource(R.drawable.arknights_rhodes_island),
+                            contentDescription = null,
+                            modifier = Modifier.padding(start = 12.dp, end = 8.dp).size(32.dp),
+                        )
+                    }
+                },
                 actions = {
                     if (semester != null) {
                         IconButton(onClick = viewModel::openNewCourseEditor) {
@@ -155,10 +172,10 @@ fun ScheduleScreen(
                 },
             )
         },
-    ) { padding ->
+    ) {
         if (semester == null) {
             Column(
-                Modifier.padding(padding).fillMaxSize(),
+                Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.Center,
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
@@ -172,10 +189,10 @@ fun ScheduleScreen(
                 Spacer(Modifier.height(16.dp))
                 TextButton(onClick = onImport) { Text("从教务导入课表") }
             }
-            return@Scaffold
+            return@ScheduleScaffold
         }
 
-        Column(Modifier.padding(padding).fillMaxSize()) {
+        Column(Modifier.fillMaxSize()) {
             // 周切换条
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 4.dp),
@@ -293,6 +310,7 @@ fun ScheduleScreen(
                     val blocks = viewModel.blocksFor(w, weekday, showOffWeek)
                     Box(Modifier.weight(1f).height(CELL_HEIGHT * nodeCount)) {
                         blocks.forEach { block ->
+                            val courseColors = scheduleStyle.colorsFor(block.course.course.colorIndex)
                             val span = block.session.endNode - block.session.startNode + 1
                             Box(
                                 Modifier
@@ -301,8 +319,8 @@ fun ScheduleScreen(
                                     .height(CELL_HEIGHT * span - 2.dp)
                                     .padding(horizontal = 1.dp)
                                     .alpha(if (block.inWeek) 1f else 0.35f)
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(CoursePalette.container(block.course.course.colorIndex))
+                                    .clip(scheduleStyle.courseShape)
+                                    .background(courseColors.container)
                                     .clickable { viewModel.showDetail(block.course) }
                                     .padding(horizontal = 3.dp, vertical = 2.dp),
                             ) {
@@ -313,7 +331,7 @@ fun ScheduleScreen(
                                         fontSize = 10.sp,
                                         lineHeight = 12.sp,
                                         fontWeight = FontWeight.SemiBold,
-                                        color = CoursePalette.onContainer(block.course.course.colorIndex),
+                                        color = courseColors.content,
                                         maxLines = if (span >= 2) 2 else 1,
                                         overflow = TextOverflow.Ellipsis,
                                     )
@@ -325,7 +343,7 @@ fun ScheduleScreen(
                                                 style = MaterialTheme.typography.labelSmall,
                                                 fontSize = 9.sp,
                                                 lineHeight = 11.sp,
-                                                color = CoursePalette.onContainer(block.course.course.colorIndex),
+                                                color = courseColors.content,
                                                 maxLines = 1,
                                                 overflow = TextOverflow.Ellipsis,
                                             )
@@ -336,7 +354,7 @@ fun ScheduleScreen(
                                                 style = MaterialTheme.typography.labelSmall,
                                                 fontSize = 9.sp,
                                                 lineHeight = 11.sp,
-                                                color = CoursePalette.onContainer(block.course.course.colorIndex),
+                                                color = courseColors.content,
                                                 maxLines = 1,
                                                 overflow = TextOverflow.Ellipsis,
                                             )
@@ -347,7 +365,7 @@ fun ScheduleScreen(
                                                 style = MaterialTheme.typography.labelSmall,
                                                 fontSize = 9.sp,
                                                 lineHeight = 11.sp,
-                                                color = CoursePalette.onContainer(block.course.course.colorIndex),
+                                                color = courseColors.content,
                                                 maxLines = 1,
                                                 overflow = TextOverflow.Ellipsis,
                                             )
@@ -359,13 +377,13 @@ fun ScheduleScreen(
                                                 style = MaterialTheme.typography.labelSmall,
                                                 fontSize = 8.sp,
                                                 lineHeight = 10.sp,
-                                                color = CoursePalette.onContainer(block.course.course.colorIndex),
+                                                color = courseColors.content,
                                                 modifier = Modifier
                                                     .padding(top = 1.dp)
                                                     .clip(RoundedCornerShape(3.dp))
                                                     .border(
                                                         0.75.dp,
-                                                        CoursePalette.onContainer(block.course.course.colorIndex).copy(alpha = 0.6f),
+                                                        courseColors.content.copy(alpha = 0.6f),
                                                         RoundedCornerShape(3.dp),
                                                     )
                                                     .padding(horizontal = 2.dp),
@@ -387,6 +405,7 @@ fun ScheduleScreen(
     // 课程详情
     detail?.let { course ->
         ModalBottomSheet(onDismissRequest = { viewModel.showDetail(null) }) {
+            ThemeDialogSystemBars()
             CourseDetailContent(
                 course = course,
                 currentWeek = week,
@@ -402,6 +421,7 @@ fun ScheduleScreen(
     // 课程/时段编辑
     editorTarget?.let { target ->
         ModalBottomSheet(onDismissRequest = viewModel::closeEditor) {
+            ThemeDialogSystemBars()
             SessionEditorSheet(
                 courseName = target.course.name,
                 initialSession = target.session,
