@@ -79,6 +79,9 @@ class SettingsViewModel @Inject constructor(
     val showSlotEnd: StateFlow<Boolean> =
         settings.showSlotEnd.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
+    val showWinter: StateFlow<Boolean> =
+        settings.showWinter.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
     fun setShowOffWeek(value: Boolean) = viewModelScope.launch { settings.setShowOffWeek(value) }
 
     fun setDynamicColor(value: Boolean) = viewModelScope.launch { settings.setDynamicColor(value) }
@@ -86,6 +89,8 @@ class SettingsViewModel @Inject constructor(
     fun setShowWeekend(value: Boolean) = viewModelScope.launch { settings.setShowWeekend(value) }
 
     fun setShowSlotEnd(value: Boolean) = viewModelScope.launch { settings.setShowSlotEnd(value) }
+
+    fun setShowWinter(value: Boolean) = viewModelScope.launch { settings.setShowWinter(value) }
 
     fun saveSlot(slot: TimeSlot) = viewModelScope.launch { repository.upsertTimeSlot(slot) }
 
@@ -137,6 +142,7 @@ fun SettingsScreen(
     val showOffWeek by viewModel.showOffWeek.collectAsStateWithLifecycle()
     val showWeekend by viewModel.showWeekend.collectAsStateWithLifecycle()
     val showSlotEnd by viewModel.showSlotEnd.collectAsStateWithLifecycle()
+    val showWinter by viewModel.showWinter.collectAsStateWithLifecycle()
     var editingSlot by remember { mutableStateOf<TimeSlot?>(null) }
     var confirmingResetSlots by remember { mutableStateOf(false) }
 
@@ -213,6 +219,16 @@ fun SettingsScreen(
                     supportingContent = { Text("每节课固定 45 分钟，默认只显示开始时间") },
                     trailingContent = {
                         Switch(checked = showSlotEnd, onCheckedChange = viewModel::setShowSlotEnd)
+                    },
+                )
+            }
+            item { HorizontalDivider() }
+            item {
+                ListItem(
+                    headlineContent = { Text("显示冬季学期") },
+                    supportingContent = { Text("教务系统目前查不到冬季课表，学期列表默认隐藏；正在使用中的冬季不受影响") },
+                    trailingContent = {
+                        Switch(checked = showWinter, onCheckedChange = viewModel::setShowWinter)
                     },
                 )
             }
