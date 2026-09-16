@@ -60,6 +60,52 @@ class ScheduleRepository @Inject constructor(
         timeSlotDao.upsertAll(TimeSlotDefaults.all)
     }
 
+    /** 手动编辑保存：课程名与单个时段一起落库 */
+    suspend fun saveSessionEdit(course: Course, session: CourseSession) = db.withTransaction {
+        courseDao.updateCourse(course)
+        courseDao.updateSession(session)
+    }
+
+    /** 给已有课程追加一个时段（课程名可同步改名） */
+    suspend fun addSession(course: Course, session: CourseSession) = db.withTransaction {
+        courseDao.updateCourse(course)
+        courseDao.insertSessions(listOf(session.copy(courseId = course.id)))
+    }
+
+    /** 新建自定义课程（含第一个时段） */
+    suspend fun addCustomCourse(
+        semesterId: Long,
+        name: String,
+        session: CourseSession,
+    ): Long = db.withTransaction {
+        val courseId = courseDao.insertCourses(
+            listOf(
+                Course(
+                    semesterId = semesterId,
+                    name = name,
+                    courseCode = "自定义",
+                    className = "",
+                    classId = "custom-${System.currentTimeMillis()}",
+                    credit = "",
+                    colorIndex = ((name.hashCode() % COURSE_PALETTE_SIZE) + COURSE_PALETTE_SIZE) % COURSE_PALETTE_SIZE,
+                )
+            )
+        ).first()
+        courseDao.insertSessions(listOf(session.copy(courseId = courseId)))
+        courseId
+    }
+
+    /** 删除单个时段；若因此课程再无时段，整门课一并删除 */
+    suspend fun deleteSessionAndOrphanCourse(session: CourseSession) = db.withTransaction {
+        courseDao.deleteSession(session.id)
+        if (courseDao.countSessions(session.courseId) == 0) {
+            courseDao.deleteCourse(session.courseId)
+        }
+    }
+
+    /** 删除整门课（时段级联删除） */
+    suspend fun deleteCourse(courseId: Long) = courseDao.deleteCourse(courseId)
+
     /** 全量快照（备份导出用） */
     suspend fun backupSnapshot(): BackupCodec.Snapshot = db.withTransaction {
         val snapshot = mutableListOf<Pair<Semester, List<Pair<Course, List<CourseSession>>>>>()

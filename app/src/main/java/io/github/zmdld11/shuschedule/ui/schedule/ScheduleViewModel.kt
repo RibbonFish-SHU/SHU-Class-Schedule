@@ -3,12 +3,15 @@ package io.github.zmdld11.shuschedule.ui.schedule
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import io.github.zmdld11.shuschedule.data.db.Course
 import io.github.zmdld11.shuschedule.data.db.CourseSession
 import io.github.zmdld11.shuschedule.data.db.CourseWithSessions
 import io.github.zmdld11.shuschedule.data.db.Semester
 import io.github.zmdld11.shuschedule.data.db.TimeSlot
+import io.github.zmdld11.shuschedule.data.parser.WeekTextParser
 import io.github.zmdld11.shuschedule.data.repo.ScheduleRepository
 import io.github.zmdld11.shuschedule.data.settings.SettingsStore
+import io.github.zmdld11.shuschedule.widget.WidgetUpdater
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -44,6 +47,7 @@ data class ScheduleUiState(
 @HiltViewModel
 class ScheduleViewModel @Inject constructor(
     private val repository: ScheduleRepository,
+    private val widgetUpdater: WidgetUpdater,
     settings: SettingsStore,
 ) : ViewModel() {
 
@@ -88,6 +92,124 @@ class ScheduleViewModel @Inject constructor(
 
     fun showDetail(course: CourseWithSessions?) {
         _detailCourse.value = course
+    }
+
+    // ---------- 课程手动编辑 ----------
+
+    /** 编辑目标：session=null 表示给该课新增时段；course.id=0 表示新建自定义课程 */
+    data class SessionEditTarget(val course: Course, val session: CourseSession?)
+
+    private val _editorTarget = MutableStateFlow<SessionEditTarget?>(null)
+    val editorTarget: StateFlow<SessionEditTarget?> = _editorTarget.asStateFlow()
+
+    fun openSessionEditor(course: Course, session: CourseSession?) {
+        _detailCourse.value = null
+        _editorTarget.value = SessionEditTarget(course, session)
+    }
+
+    fun openNewCourseEditor() {
+        val semester = state.value.semester ?: return
+        _editorTarget.value = SessionEditTarget(
+            course = Course(
+                semesterId = semester.id,
+                name = "",
+                courseCode = "自定义",
+                className = "",
+                classId = "",
+                credit = "",
+            ),
+            session = null,
+        )
+    }
+
+    fun closeEditor() {
+        _editorTarget.value = null
+    }
+
+    fun saveSessionEdit(
+        name: String,
+        weekday: Int,
+        startNode: Int,
+        endNode: Int,
+        weeksText: String,
+        room: String,
+        teacher: String,
+        campus: String,
+    ) {
+        val target = _editorTarget.value ?: return
+        val weeksMask = WeekTextParser.parseMask(weeksText)
+        viewModelScope.launch {
+            runCatching {
+                when {
+                    target.session == null && target.course.id == 0L ->
+                        repository.addCustomCourse(
+                            semesterId = target.course.semesterId,
+                            name = name,
+                            session = CourseSession(
+                                courseId = 0,
+                                weekday = weekday,
+                                startNode = startNode,
+                                endNode = endNode,
+                                weeksMask = weeksMask,
+                                room = room,
+                                teacher = teacher,
+                                campus = campus,
+                            ),
+                        )
+
+                    target.session == null ->
+                        repository.addSession(
+                            course = target.course.copy(name = name),
+                            session = CourseSession(
+                                courseId = target.course.id,
+                                weekday = weekday,
+                                startNode = startNode,
+                                endNode = endNode,
+                                weeksMask = weeksMask,
+                                room = room,
+                                teacher = teacher,
+                                campus = campus,
+                            ),
+                        )
+
+                    else ->
+                        repository.saveSessionEdit(
+                            course = target.course.copy(name = name),
+                            session = target.session.copy(
+                                weekday = weekday,
+                                startNode = startNode,
+                                endNode = endNode,
+                                weeksMask = weeksMask,
+                                room = room,
+                                teacher = teacher,
+                                campus = campus,
+                            ),
+                        )
+                }
+            }.onSuccess {
+                widgetUpdater.pushAll()
+                _editorTarget.value = null
+            }
+        }
+    }
+
+    /** 删除编辑中的时段（课程因此无时段则整门课删除） */
+    fun deleteEditingSession() {
+        val target = _editorTarget.value ?: return
+        val session = target.session ?: return
+        viewModelScope.launch {
+            repository.deleteSessionAndOrphanCourse(session)
+            widgetUpdater.pushAll()
+            _editorTarget.value = null
+        }
+    }
+
+    fun deleteCourse(courseId: Long) {
+        viewModelScope.launch {
+            repository.deleteCourse(courseId)
+            widgetUpdater.pushAll()
+            _detailCourse.value = null
+        }
     }
 
     /** 某周某天的课程块：CourseSession + 对应 Course；inWeek=该周是否上这节课 */

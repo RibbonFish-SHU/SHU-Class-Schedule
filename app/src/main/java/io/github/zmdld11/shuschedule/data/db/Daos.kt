@@ -7,6 +7,7 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Relation
 import androidx.room.Transaction
+import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
 
 data class CourseWithSessions(
@@ -72,6 +73,22 @@ interface CourseDao {
 
     @Insert
     suspend fun insertSessions(sessions: List<CourseSession>)
+
+    @Update
+    suspend fun updateCourse(course: Course)
+
+    @Update
+    suspend fun updateSession(session: CourseSession)
+
+    @Query("SELECT COUNT(*) FROM course_sessions WHERE courseId = :courseId")
+    suspend fun countSessions(courseId: Long): Int
+
+    @Query("DELETE FROM course_sessions WHERE id = :sessionId")
+    suspend fun deleteSession(sessionId: Long)
+
+    /** 课程删除时时段经外键 CASCADE 一并删除 */
+    @Query("DELETE FROM courses WHERE id = :courseId")
+    suspend fun deleteCourse(courseId: Long)
 
     @Query("DELETE FROM courses WHERE semesterId = :semesterId")
     suspend fun deleteBySemester(semesterId: Long)
