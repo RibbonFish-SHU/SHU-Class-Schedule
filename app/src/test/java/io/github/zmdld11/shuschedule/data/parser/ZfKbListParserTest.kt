@@ -23,7 +23,7 @@ class ZfKbListParserTest {
         },
         {
           "kcmc": "数据结构", "kch": "CS1001", "jxbmc": "数据结构-01", "jxb_id": "9100001",
-          "xm": "张三", "cdmc": "BJ103",
+          "xm": "张三", "cdmc": "BJ103", "xqumc": "宝山",
           "xqj": "1", "jcs": "1-2", "zcd": "1-8周", "xf": "4"
         },
         {

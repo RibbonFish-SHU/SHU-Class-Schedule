@@ -339,12 +339,12 @@ private fun SessionRow(session: CourseSession, currentWeek: Int) {
                 style = MaterialTheme.typography.bodyMedium,
             )
             Text(
-                listOf(
+                listOfNotNull(
                     formatWeeks(CourseSession.weeksOf(session.weeksMask)),
                     session.campus.takeIf { it.isNotBlank() },
-                    session.room,
-                    session.teacher,
-                ).filter { it.isNotBlank() }.joinToString(" · "),
+                    session.room.takeIf { it.isNotBlank() },
+                    session.teacher.takeIf { it.isNotBlank() },
+                ).joinToString(" · "),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
