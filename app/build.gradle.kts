@@ -15,8 +15,8 @@ android {
         applicationId = "io.github.zmdld11.shuschedule"
         minSdk = 26
         targetSdk = 35
-        versionCode = 8
-        versionName = "0.3.5"
+        versionCode = 9
+        versionName = "0.4.0"
         vectorDrawables { useSupportLibrary = true }
     }
 

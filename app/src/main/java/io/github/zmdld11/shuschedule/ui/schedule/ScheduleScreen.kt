@@ -7,9 +7,11 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -36,6 +38,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -70,12 +73,13 @@ import io.github.zmdld11.shuschedule.data.settings.AppTheme
 import io.github.zmdld11.shuschedule.ui.theme.LocalScheduleStyle
 import io.github.zmdld11.shuschedule.ui.theme.ScheduleScaffold
 import io.github.zmdld11.shuschedule.ui.theme.ThemeDialogSystemBars
+import io.github.zmdld11.shuschedule.data.db.DayOverride
 import java.time.LocalDate
 
 private val CELL_HEIGHT = 52.dp
 internal val DAY_CHARS = listOf("一", "二", "三", "四", "五", "六", "日")
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun ScheduleScreen(
     onImport: () -> Unit,
@@ -93,19 +97,20 @@ fun ScheduleScreen(
     val showOffWeek by viewModel.showOffWeek.collectAsStateWithLifecycle()
     val showWeekend by viewModel.showWeekend.collectAsStateWithLifecycle()
     val showSlotEnd by viewModel.showSlotEnd.collectAsStateWithLifecycle()
+    val backgroundPath by viewModel.scheduleBackgroundPath.collectAsStateWithLifecycle()
 
     val currentWeek = state.currentWeek
     // 纯 Compose 派生：selectedWeek 只经追踪的 State 读，避免原始 Flow.value 读取与重组时序分歧
     val week = selectedWeek ?: currentWeek
     var showJumpDialog by remember { mutableStateOf(false) }
     var deletingCourse by remember { mutableStateOf<CourseWithSessions?>(null) }
+    var dayOverrideDialog by remember { mutableStateOf<Pair<Int, Int>?>(null) }
 
-    // 上大绝大多数周末无课：默认 5 列工作日，加宽课程块减少信息截断
-    val dayCount = if (showWeekend) 7 else 5
 
     val semester = state.semester
 
     ScheduleScaffold(
+        backgroundPath = backgroundPath,
         topBar = {
             var semesterMenu by remember { mutableStateOf(false) }
             TopAppBar(
@@ -210,7 +215,11 @@ fun ScheduleScreen(
                         .clickable { showJumpDialog = true },
                     textAlign = TextAlign.Center,
                 )
-                if (week != currentWeek) {
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = week != currentWeek,
+                    enter = androidx.compose.animation.expandHorizontally() + fadeIn(),
+                    exit = androidx.compose.animation.shrinkHorizontally() + fadeOut(),
+                ) {
                     TextButton(onClick = { viewModel.selectWeek(null) }) { Text("回本周") }
                 }
                 TextButton(
@@ -255,18 +264,29 @@ fun ScheduleScreen(
                     label = "weekTransition",
                 ) { w ->
                     Column(Modifier.fillMaxSize()) {
-                        // 表头：星期 + 日期
+                        val weekOverride = state.dayOverrides[w].orEmpty()
+                        // 周末列默认隐藏；本周六/日有调休覆盖时自动显示该列
+                        val visibleDays = (1..5) + (6..7).filter { showWeekend || weekOverride.containsKey(it) }
+
+                        // 表头：星期 + 日期（长按设置该天调休/放假）
                         Row(Modifier.fillMaxWidth()) {
                             Spacer(Modifier.width(40.dp))
-                            repeat(dayCount) { i ->
-                                val date = state.dateOf(w, i + 1)
+                            visibleDays.forEach { wd ->
+                                val date = state.dateOf(w, wd)
                                 val isToday = date == today
+                                val override = weekOverride[wd]
                                 Column(
-                                    Modifier.weight(1f).padding(vertical = 2.dp),
+                                    Modifier
+                                        .weight(1f)
+                                        .padding(vertical = 2.dp)
+                                        .combinedClickable(
+                                            onClick = {},
+                                            onLongClick = { dayOverrideDialog = w to wd },
+                                        ),
                                     horizontalAlignment = Alignment.CenterHorizontally,
                                 ) {
                                     Text(
-                                        DAY_CHARS[i],
+                                        DAY_CHARS[wd - 1],
                                         style = MaterialTheme.typography.labelMedium,
                                         fontWeight = if (isToday) FontWeight.Bold else null,
                                         color = if (isToday) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
@@ -276,6 +296,17 @@ fun ScheduleScreen(
                                         style = MaterialTheme.typography.labelSmall,
                                         color = if (isToday) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
+                                    if (override != null) {
+                                        Text(
+                                            if (override.mode == DayOverride.MODE_HOLIDAY) "休" else "班·周${DAY_CHARS[override.substituteWeekday - 1]}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = if (override.mode == DayOverride.MODE_HOLIDAY) {
+                                                MaterialTheme.colorScheme.primary
+                                            } else {
+                                                MaterialTheme.colorScheme.tertiary
+                                            },
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -304,10 +335,23 @@ fun ScheduleScreen(
                         }
                     }
                 }
-                // 课程列（工作日 5 列，开关开周末 7 列）
-                repeat(dayCount) { dayIdx ->
-                    val weekday = dayIdx + 1
-                    val blocks = viewModel.blocksFor(w, weekday, showOffWeek)
+                // 课程列（默认工作日；调休到周末的周自动加列）
+                visibleDays.forEach { weekday ->
+                    val override = weekOverride[weekday]
+                    if (override?.mode == DayOverride.MODE_HOLIDAY) {
+                        // 放假：不排课，居中轻提示
+                        Box(Modifier.weight(1f).height(CELL_HEIGHT * nodeCount)) {
+                            Text(
+                                "放假",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.outline,
+                                modifier = Modifier.align(Alignment.Center),
+                            )
+                        }
+                    } else {
+                        // 调休列按来源星期的课表渲染
+                        val effectiveWeekday = override?.substituteWeekday?.takeIf { override.mode == DayOverride.MODE_SUBSTITUTE } ?: weekday
+                        val blocks = viewModel.blocksFor(w, effectiveWeekday, showOffWeek)
                     Box(Modifier.weight(1f).height(CELL_HEIGHT * nodeCount)) {
                         blocks.forEach { block ->
                             val courseColors = scheduleStyle.colorsFor(block.course.course.colorIndex)
@@ -399,8 +443,9 @@ fun ScheduleScreen(
                     }
                 }
             }
-        }
-    }
+            }
+            }
+                }
 
     // 课程详情
     detail?.let { course ->
@@ -482,6 +527,24 @@ fun ScheduleScreen(
                 }) { Text("删除") }
             },
             dismissButton = { TextButton(onClick = { deletingCourse = null }) { Text("取消") } },
+        )
+    }
+
+    // 调休/放假设置（长按列头触发）
+    dayOverrideDialog?.let { (dw, dd) ->
+        DayOverrideDialog(
+            week = dw,
+            weekday = dd,
+            existing = state.overrideOf(dw, dd),
+            onSave = { mode, sub ->
+                viewModel.setDayOverride(dw, dd, mode, sub)
+                dayOverrideDialog = null
+            },
+            onClear = {
+                viewModel.setDayOverride(dw, dd, -1)
+                dayOverrideDialog = null
+            },
+            onDismiss = { dayOverrideDialog = null },
         )
     }
 
@@ -617,8 +680,7 @@ private fun SessionRow(
 }
 
 /** 周次集合 → 压缩文本：{1..8}→"1-8周"；全奇/全偶→"2-16周(双)"；杂散→"1,5,9周" */
-internal fun formatWeeks(weeks: Set<Int>): String {
-    if (weeks.isEmpty()) return "全学期"
+internal fun formatWeeks(weeks: Set<Int>): String {    if (weeks.isEmpty()) return "全学期"
     val sorted = weeks.sorted()
     if (sorted.size >= 3) {
         val allOdd = sorted.all { it % 2 == 1 }
@@ -642,4 +704,65 @@ internal fun formatWeeks(weeks: Set<Int>): String {
     }
     parts += if (start == prev) "${start}周" else "${start}-${prev}周"
     return parts.joinToString(",")
+}
+
+@Composable
+private fun DayOverrideDialog(
+    week: Int,
+    weekday: Int,
+    existing: DayOverride?,
+    onSave: (mode: Int, substituteWeekday: Int) -> Unit,
+    onClear: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var mode by remember(existing) {
+        mutableStateOf(existing?.mode?.takeIf { it >= 0 } ?: -1) // -1 = 未选（默认正常）
+    }
+    var substitute by remember(existing) { mutableStateOf(existing?.substituteWeekday?.takeIf { it > 0 } ?: 1) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("第 $week 周 · 周${DAY_CHARS[weekday - 1]} 调休") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("设置这一天的上课安排：", style = MaterialTheme.typography.bodySmall)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    FilterChip(selected = mode < 0 || mode == -2, onClick = { mode = -2 }, label = { Text("正常上课") })
+                    FilterChip(
+                        selected = mode == DayOverride.MODE_HOLIDAY,
+                        onClick = { mode = DayOverride.MODE_HOLIDAY },
+                        label = { Text("放假") },
+                    )
+                    FilterChip(
+                        selected = mode == DayOverride.MODE_SUBSTITUTE,
+                        onClick = { mode = DayOverride.MODE_SUBSTITUTE },
+                        label = { Text("按周_的课表上") },
+                    )
+                }
+                if (mode == DayOverride.MODE_SUBSTITUTE) {
+                    Text("按哪一天的课表上：", style = MaterialTheme.typography.labelMedium)
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        (1..7).filter { it != weekday }.forEach { d ->
+                            FilterChip(
+                                selected = substitute == d,
+                                onClick = { substitute = d },
+                                label = { Text("周${DAY_CHARS[d - 1]}") },
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                when (mode) {
+                    -2 -> onClear()          // 显式选了正常上课 = 清除覆盖
+                    DayOverride.MODE_HOLIDAY -> onSave(DayOverride.MODE_HOLIDAY, 0)
+                    DayOverride.MODE_SUBSTITUTE -> onSave(DayOverride.MODE_SUBSTITUTE, substitute)
+                    else -> onClear()
+                }
+            }) { Text("确定") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+    )
 }

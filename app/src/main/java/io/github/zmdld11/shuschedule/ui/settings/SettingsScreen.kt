@@ -62,11 +62,47 @@ import kotlinx.coroutines.withContext
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
+    @dagger.hilt.android.qualifiers.ApplicationContext private val context: Context,
     private val repository: ScheduleRepository,
     private val settings: SettingsStore,
     private val updateClient: io.github.zmdld11.shuschedule.data.update.UpdateCheckClient,
     private val widgetUpdater: io.github.zmdld11.shuschedule.widget.WidgetUpdater,
 ) : ViewModel() {
+
+    val scheduleBackgroundEnabled: StateFlow<Boolean> =
+        settings.scheduleBackgroundEnabled.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    val autoUpdateCheck: StateFlow<Boolean> =
+        settings.autoUpdateCheck.stateIn(viewModelScope, SharingStarted.Eagerly, true)
+
+    fun setAutoUpdateCheck(value: Boolean) = viewModelScope.launch { settings.setAutoUpdateCheck(value) }
+
+    /** 课表背景：把选中图片压缩存入应用私有目录并开启 */
+    fun applyScheduleBackground(context: Context, uri: Uri, onResult: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            val ok = withContext(Dispatchers.IO) {
+                runCatching {
+                    val bitmap = android.graphics.BitmapFactory.decodeStream(
+                        context.contentResolver.openInputStream(uri),
+                    ) ?: error("无法读取图片")
+                    val target = java.io.File(context.filesDir, "schedule_background.jpg")
+                    target.outputStream().use { out ->
+                        bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 88, out)
+                    }
+                    bitmap.recycle()
+                }.isSuccess
+            }
+            if (ok) settings.setScheduleBackgroundEnabled(true)
+            onResult(ok)
+        }
+    }
+
+    fun clearScheduleBackground() = viewModelScope.launch {
+        withContext(Dispatchers.IO) {
+            java.io.File(context.filesDir, "schedule_background.jpg").delete()
+        }
+        settings.setScheduleBackgroundEnabled(false)
+    }
 
     /** 手动检查更新：返回 消息 + 新版本页链接（null=已是最新或失败） */
     fun checkUpdate(onResult: (String, String?) -> Unit) = viewModelScope.launch {
@@ -159,8 +195,18 @@ fun SettingsScreen(
     val showWeekend by viewModel.showWeekend.collectAsStateWithLifecycle()
     val showSlotEnd by viewModel.showSlotEnd.collectAsStateWithLifecycle()
     val showWinter by viewModel.showWinter.collectAsStateWithLifecycle()
+    val scheduleBgEnabled by viewModel.scheduleBackgroundEnabled.collectAsStateWithLifecycle()
+    val autoUpdateCheck by viewModel.autoUpdateCheck.collectAsStateWithLifecycle()
     var editingSlot by remember { mutableStateOf<TimeSlot?>(null) }
     var confirmingResetSlots by remember { mutableStateOf(false) }
+
+    val bgPicker = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia(),
+    ) { uri ->
+        if (uri != null) viewModel.applyScheduleBackground(context, uri) { ok ->
+            scope.launch { snackbar.showSnackbar(if (ok) "课表背景已更新" else "图片读取失败") }
+        }
+    }
 
     val exportLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json"),
@@ -262,6 +308,15 @@ fun SettingsScreen(
             item { HorizontalDivider() }
             item {
                 ListItem(
+                    headlineContent = { Text("自动检查更新") },
+                    supportingContent = { Text("每天启动时静默检查一次新版本；关闭后仍可手动检查") },
+                    trailingContent = {
+                        Switch(checked = autoUpdateCheck, onCheckedChange = viewModel::setAutoUpdateCheck)
+                    },
+                )
+            }
+            item {
+                ListItem(
                     headlineContent = { Text("检查更新") },
                     supportingContent = { Text("从 GitHub Releases 检查新版本（每天启动时也会自动检查一次）") },
                     modifier = Modifier.clickable {
@@ -280,6 +335,31 @@ fun SettingsScreen(
                                 }
                             }
                         }
+                    },
+                )
+            }
+            item { HorizontalDivider() }
+            item {
+                ListItem(
+                    headlineContent = { Text("课表背景") },
+                    supportingContent = {
+                        Text(when {
+                            scheduleBgEnabled -> "已设置自选图片，优先于主题背景；清除后恢复主题背景"
+                            currentAppearance.theme == AppTheme.ARKNIGHTS -> "正在使用罗德岛背景；可从相册选择图片替换"
+                            else -> "从相册选一张图作为周视图背景（自动加蒙版保证可读）"
+                        })
+                    },
+                    trailingContent = if (scheduleBgEnabled) {
+                        {
+                            TextButton(onClick = { viewModel.clearScheduleBackground() }) { Text("清除") }
+                        }
+                    } else null,
+                    modifier = Modifier.clickable {
+                        bgPicker.launch(
+                            androidx.activity.result.PickVisualMediaRequest(
+                                androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly,
+                            ),
+                        )
                     },
                 )
             }

@@ -84,4 +84,22 @@ class SettingsStore @Inject constructor(
     suspend fun setLastUpdateCheckDay(day: Int) {
         context.dataStore.edit { it[lastUpdateCheckDayKey] = day }
     }
+
+    /** 课表背景壁纸（图片文件固定存 filesDir/schedule_background.jpg，此处只记开关） */
+    private val scheduleBackgroundKey = booleanPreferencesKey("schedule_background")
+
+    val scheduleBackgroundEnabled: Flow<Boolean> = context.dataStore.data.map { it[scheduleBackgroundKey] ?: false }
+
+    suspend fun setScheduleBackgroundEnabled(value: Boolean) {
+        context.dataStore.edit { it[scheduleBackgroundKey] = value }
+    }
+
+    /** 启动时是否自动检查更新（默认开；手动检查不受影响） */
+    private val autoUpdateCheckKey = booleanPreferencesKey("auto_update_check")
+
+    val autoUpdateCheck: Flow<Boolean> = context.dataStore.data.map { it[autoUpdateCheckKey] ?: true }
+
+    suspend fun setAutoUpdateCheck(value: Boolean) {
+        context.dataStore.edit { it[autoUpdateCheckKey] = value }
+    }
 }

@@ -2,6 +2,7 @@ package io.github.zmdld11.shuschedule.widget
 
 import io.github.zmdld11.shuschedule.data.db.Course
 import io.github.zmdld11.shuschedule.data.db.CourseSession
+import io.github.zmdld11.shuschedule.data.db.DayOverride
 import io.github.zmdld11.shuschedule.data.db.CourseWithSessions
 import io.github.zmdld11.shuschedule.data.db.Semester
 import io.github.zmdld11.shuschedule.data.db.TermType
@@ -81,5 +82,81 @@ class TodayScheduleTest {
         val noSlots = emptyList<TimeSlot>()
         val data = TodaySchedule.build(semester, courses, noSlots, now = wednesday, clock = LocalTime.of(23, 0))
         assertEquals(3, data.upcomingItems.size) // 时间未知 → 不剔除
+    }
+
+    @Test
+    fun `holiday override yields empty day and label`() {
+        val overrides = listOf(
+            DayOverride(semesterId = 1, week = 1, weekday = 3, mode = DayOverride.MODE_HOLIDAY),
+        )
+        val data = TodaySchedule.build(semester, courses, slots, overrides, now = wednesday, clock = LocalTime.of(9, 0))
+        assertEquals(0, data.items.size)
+        assertEquals(0, data.upcomingItems.size)
+        assertTrue(data.weekLabel.contains("假期"))
+    }
+
+    @Test
+    fun `substitute override renders source weekday sessions`() {
+        // 周六（weekday=6）没有排课记录；设为按周三上 → 应渲染周三的三节课
+        val overrides = listOf(
+            DayOverride(semesterId = 1, week = 1, weekday = 6, mode = DayOverride.MODE_SUBSTITUTE, substituteWeekday = 3),
+        )
+        val saturday = LocalDate.of(2026, 9, 19)
+        val data = TodaySchedule.build(semester, courses, slots, overrides, now = saturday, clock = LocalTime.of(8, 0))
+        assertEquals(3, data.items.size)
+        assertTrue(data.weekLabel.contains("按周三上"))
+    }
+
+    @Test
+    fun `override outside current week is ignored`() {
+        val overrides = listOf(
+            DayOverride(semesterId = 1, week = 2, weekday = 3, mode = DayOverride.MODE_HOLIDAY),
+        )
+        val data = TodaySchedule.build(semester, courses, slots, overrides, now = wednesday, clock = LocalTime.of(9, 0))
+        assertEquals(3, data.items.size)
+    }
+
+    private val wedThuCourses = listOf(
+        course(CourseSession(courseId = 1, weekday = 3, startNode = 1, endNode = 2, weeksMask = week1, room = "A101", teacher = "早")),
+        course(CourseSession(courseId = 1, weekday = 4, startNode = 7, endNode = 8, weeksMask = week1, room = "B202", teacher = "明")),
+    )
+
+    @Test
+    fun `all done today switches to tomorrow preview`() {
+        val data = TodaySchedule.build(semester, wedThuCourses, slots, now = wednesday, clock = LocalTime.of(20, 0))
+        assertTrue(data.forTomorrow)
+        assertEquals(1, data.items.size)              // 明天(周四)的 7-8 节
+        assertEquals(7, data.items.single().startNode)
+        assertEquals(0, data.nextIndex)
+        assertTrue(data.weekLabel.startsWith("明天"))
+        assertFalse(data.inClass)
+    }
+
+    @Test
+    fun `tomorrow holiday keeps today ended state`() {
+        val overrides = listOf(DayOverride(semesterId = 1, week = 1, weekday = 4, mode = DayOverride.MODE_HOLIDAY))
+        val data = TodaySchedule.build(semester, wedThuCourses, slots, overrides, now = wednesday, clock = LocalTime.of(20, 0))
+        assertFalse(data.forTomorrow)
+        assertEquals(null, data.nextIndex)
+        assertEquals(0, data.upcomingItems.size)
+    }
+
+    @Test
+    fun `tomorrow without classes keeps today ended state`() {
+        // 原始 fixture 只有周三课，周四无课
+        val data = TodaySchedule.build(semester, courses, slots, now = wednesday, clock = LocalTime.of(20, 0))
+        assertFalse(data.forTomorrow)
+        assertEquals(0, data.upcomingItems.size)
+    }
+
+    @Test
+    fun `last day of semester does not peek beyond semester`() {
+        val lastDayCourses = listOf(
+            course(CourseSession(courseId = 1, weekday = 7, startNode = 1, endNode = 2, weeksMask = week1, room = "A101", teacher = "末")),
+        )
+        val lastSunday = LocalDate.of(2027, 1, 3) // 第16周周日
+        val data = TodaySchedule.build(semester, lastDayCourses, slots, now = lastSunday, clock = LocalTime.of(20, 0))
+        assertFalse(data.forTomorrow)
+        assertEquals(0, data.upcomingItems.size)
     }
 }

@@ -41,7 +41,7 @@
 - JDK 17：`clean testDebugUnitTest assembleDebug --no-build-cache` 成功；49 项 JVM 测试通过，其中新增 6 项主题解析、取色策略和文字对比度测试。
 - Android 15 / API 35 模拟器：默认与明日方舟即时切换、强制结束进程后主题保留；动态取色原偏好为开 / 关时均可在往返切换后恢复。
 - 核对空课表、五列 / 七列课表、非本周课程、课程详情、编辑弹窗、系统深浅色；411dp 常规显示与 360dp / 1.3 倍字体。弹窗单独适配系统栏图标，避免浅色系统下的深色主题弹窗出现黑色状态栏图标。
-- `lintDebug` 有既存失败：`ImportScreen.kt:247` 的 `JavascriptInterface`。与原主分支 `9d449b4` 独立检出对照，均为 1 error / 22 warnings / 4 informational，**没有新增 finding**，未关闭任何 lint 规则。
+- `lintDebug` 有既存失败：`ImportScreen.kt:247` 的 `JavascriptInterface`。与原主分支 `d9db6a5` 独立检出对照，均为 1 error / 22 warnings / 6 informational，**没有新增 finding**，未关闭任何 lint 规则。
 - 模拟器使用人工构造的测试课程，不涉及教务账号或真实学生数据；未进行学校登录及真实教务导入测试。
 
 ### 界面预览
