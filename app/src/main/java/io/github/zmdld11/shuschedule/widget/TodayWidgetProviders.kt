@@ -150,7 +150,14 @@ class TodayWidgetSmallProvider : BaseTodayWidgetProvider() {
                 views.setTextViewText(R.id.widget_small_sub, data.weekLabel)
             }
             else -> {
-                views.setTextViewText(R.id.widget_small_status, if (data.inClass) "上课中" else "下一节课")
+                views.setTextViewText(
+                    R.id.widget_small_status,
+                    when {
+                        data.inClass -> "上课中"
+                        data.forTomorrow -> "明天 · 下一节"
+                        else -> "下一节课"
+                    },
+                )
                 views.setTextViewText(R.id.widget_small_name, item.name)
                 views.setTextViewText(
                     R.id.widget_small_sub,
