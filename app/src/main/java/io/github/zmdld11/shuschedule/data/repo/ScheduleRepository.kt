@@ -47,6 +47,27 @@ class ScheduleRepository @Inject constructor(
 
     suspend fun activateSemester(id: Long) = semesterDao.activate(id)
 
+    /** 手动添加空白学期；同年同学期已存在时返回 false */
+    suspend fun addSemesterManually(
+        year: Int,
+        term: TermType,
+        startDateEpochDay: Long,
+        totalWeeks: Int,
+    ): Boolean {
+        if (semesterDao.findByYearTerm(year, term) != null) return false
+        db.withTransaction {
+            semesterDao.upsert(
+                Semester(
+                    year = year,
+                    term = term,
+                    startDateEpochDay = startDateEpochDay,
+                    totalWeeks = totalWeeks,
+                )
+            )
+        }
+        return true
+    }
+
     suspend fun updateSemesterRange(id: Long, startDateEpochDay: Long, totalWeeks: Int) =
         semesterDao.updateRange(id, startDateEpochDay, totalWeeks)
 

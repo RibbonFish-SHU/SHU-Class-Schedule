@@ -20,10 +20,14 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.EventNote
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -67,6 +71,7 @@ fun ScheduleScreen(
     val selectedWeek by viewModel.selectedWeek.collectAsStateWithLifecycle()
     val detail by viewModel.detailCourse.collectAsStateWithLifecycle()
     val editorTarget by viewModel.editorTarget.collectAsStateWithLifecycle()
+    val semesters by viewModel.semesters.collectAsStateWithLifecycle()
     val showOffWeek by viewModel.showOffWeek.collectAsStateWithLifecycle()
     val showWeekend by viewModel.showWeekend.collectAsStateWithLifecycle()
     val showSlotEnd by viewModel.showSlotEnd.collectAsStateWithLifecycle()
@@ -84,9 +89,12 @@ fun ScheduleScreen(
 
     Scaffold(
         topBar = {
+            var semesterMenu by remember { mutableStateOf(false) }
             TopAppBar(
                 title = {
-                    Column {
+                    Column(
+                        Modifier.clickable { semesterMenu = true },
+                    ) {
                         Text(
                             semester?.displayName ?: "上大课表",
                             style = MaterialTheme.typography.titleMedium,
@@ -97,6 +105,28 @@ fun ScheduleScreen(
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                        DropdownMenu(expanded = semesterMenu, onDismissRequest = { semesterMenu = false }) {
+                            semesters.forEach { s ->
+                                DropdownMenuItem(
+                                    text = { Text(s.displayName) },
+                                    trailingIcon = if (s.isActive) {
+                                        { Icon(Icons.Filled.Check, contentDescription = null) }
+                                    } else null,
+                                    onClick = {
+                                        viewModel.activateSemester(s.id)
+                                        semesterMenu = false
+                                    },
+                                )
+                            }
+                            HorizontalDivider()
+                            DropdownMenuItem(
+                                text = { Text("管理学期…") },
+                                onClick = {
+                                    semesterMenu = false
+                                    onSemesters()
+                                },
+                            )
+                        }
                     }
                 },
                 actions = {
