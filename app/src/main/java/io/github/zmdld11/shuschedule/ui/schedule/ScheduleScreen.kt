@@ -18,9 +18,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.EventNote
+import androidx.compose.material.icons.automirrored.filled.EventNote
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -51,7 +53,7 @@ import io.github.zmdld11.shuschedule.data.db.CourseWithSessions
 import java.time.LocalDate
 
 private val CELL_HEIGHT = 52.dp
-private val DAY_CHARS = listOf("一", "二", "三", "四", "五", "六", "日")
+internal val DAY_CHARS = listOf("一", "二", "三", "四", "五", "六", "日")
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -64,6 +66,7 @@ fun ScheduleScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val selectedWeek by viewModel.selectedWeek.collectAsStateWithLifecycle()
     val detail by viewModel.detailCourse.collectAsStateWithLifecycle()
+    val editorTarget by viewModel.editorTarget.collectAsStateWithLifecycle()
     val showOffWeek by viewModel.showOffWeek.collectAsStateWithLifecycle()
     val showWeekend by viewModel.showWeekend.collectAsStateWithLifecycle()
     val showSlotEnd by viewModel.showSlotEnd.collectAsStateWithLifecycle()
@@ -72,6 +75,7 @@ fun ScheduleScreen(
     // 纯 Compose 派生：selectedWeek 只经追踪的 State 读，避免原始 Flow.value 读取与重组时序分歧
     val week = selectedWeek ?: currentWeek
     var showJumpDialog by remember { mutableStateOf(false) }
+    var deletingCourse by remember { mutableStateOf<CourseWithSessions?>(null) }
 
     // 上大绝大多数周末无课：默认 5 列工作日，加宽课程块减少信息截断
     val dayCount = if (showWeekend) 7 else 5
@@ -96,8 +100,13 @@ fun ScheduleScreen(
                     }
                 },
                 actions = {
+                    if (semester != null) {
+                        IconButton(onClick = viewModel::openNewCourseEditor) {
+                            Icon(Icons.Filled.Add, contentDescription = "添加课程")
+                        }
+                    }
                     IconButton(onClick = onSemesters) {
-                        Icon(Icons.Filled.EventNote, contentDescription = "学期管理")
+                        Icon(Icons.AutoMirrored.Filled.EventNote, contentDescription = "学期管理")
                     }
                     IconButton(onClick = onSettings) {
                         Icon(Icons.Filled.Settings, contentDescription = "设置")
@@ -286,9 +295,45 @@ fun ScheduleScreen(
             CourseDetailContent(
                 course = course,
                 currentWeek = week,
+                onEditSession = { s -> viewModel.openSessionEditor(course.course, s) },
+                onAddSession = { viewModel.openSessionEditor(course.course, null) },
+                onDeleteCourse = { deletingCourse = course },
                 modifier = Modifier.padding(horizontal = 24.dp).padding(bottom = 32.dp),
             )
         }
+    }
+
+    // 课程/时段编辑
+    editorTarget?.let { target ->
+        ModalBottomSheet(onDismissRequest = viewModel::closeEditor) {
+            SessionEditorSheet(
+                courseName = target.course.name,
+                initialSession = target.session,
+                slotCount = maxOf(state.timeSlots.size, 12),
+                isNewCourse = target.course.id == 0L,
+                onSave = { nm, wd, sn, en, wt, r, t, cp ->
+                    viewModel.saveSessionEdit(nm, wd, sn, en, wt, r, t, cp)
+                },
+                onDeleteSession = if (target.session != null) viewModel::deleteEditingSession else null,
+                onDismiss = viewModel::closeEditor,
+            )
+        }
+    }
+
+    // 删除整门课确认
+    deletingCourse?.let { c ->
+        AlertDialog(
+            onDismissRequest = { deletingCourse = null },
+            title = { Text("删除 ${c.course.name}？") },
+            text = { Text("该课全部 ${c.sessions.size} 个时段将一并删除。") },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.deleteCourse(c.course.id)
+                    deletingCourse = null
+                }) { Text("删除") }
+            },
+            dismissButton = { TextButton(onClick = { deletingCourse = null }) { Text("取消") } },
+        )
     }
 
     // 跳周对话框
@@ -328,6 +373,9 @@ fun ScheduleScreen(
 private fun CourseDetailContent(
     course: CourseWithSessions,
     currentWeek: Int,
+    onEditSession: (CourseSession) -> Unit,
+    onAddSession: () -> Unit,
+    onDeleteCourse: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -343,16 +391,25 @@ private fun CourseDetailContent(
         )
         Spacer(Modifier.height(4.dp))
         course.sessions.sortedWith(compareBy({ it.weekday }, { it.startNode })).forEach { s ->
-            SessionRow(session = s, currentWeek = currentWeek)
+            SessionRow(session = s, currentWeek = currentWeek, onClick = { onEditSession(s) })
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TextButton(onClick = onAddSession) { Text("添加时段") }
+            TextButton(
+                onClick = onDeleteCourse,
+                colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+            ) { Text("删除整门课") }
         }
     }
 }
 
 @Composable
-private fun SessionRow(session: CourseSession, currentWeek: Int) {
+private fun SessionRow(session: CourseSession, currentWeek: Int, onClick: () -> Unit) {
     val hasThisWeek = session.hasWeek(currentWeek)
     Row(
-        Modifier.fillMaxWidth(),
+        Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
@@ -381,7 +438,7 @@ private fun SessionRow(session: CourseSession, currentWeek: Int) {
 }
 
 /** 周次集合 → 压缩文本：{1..8}→"1-8周"；全奇/全偶→"2-16周(双)"；杂散→"1,5,9周" */
-private fun formatWeeks(weeks: Set<Int>): String {
+internal fun formatWeeks(weeks: Set<Int>): String {
     if (weeks.isEmpty()) return "全学期"
     val sorted = weeks.sorted()
     if (sorted.size >= 3) {
