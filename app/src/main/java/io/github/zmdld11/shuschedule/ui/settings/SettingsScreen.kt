@@ -61,6 +61,7 @@ import javax.inject.Inject
 class SettingsViewModel @Inject constructor(
     private val repository: ScheduleRepository,
     private val settings: SettingsStore,
+    private val widgetUpdater: io.github.zmdld11.shuschedule.widget.WidgetUpdater,
 ) : ViewModel() {
 
     val timeSlots: StateFlow<List<TimeSlot>> =
@@ -99,6 +100,7 @@ class SettingsViewModel @Inject constructor(
                         ?: error("无法读取文件")
                     val snapshot = BackupCodec.decode(text) ?: error("备份文件格式不正确")
                     repository.restoreBackup(snapshot)
+                    widgetUpdater.pushAll()
                     true to "备份已恢复"
                 }.getOrElse { false to (it.message ?: "恢复失败") }
             }

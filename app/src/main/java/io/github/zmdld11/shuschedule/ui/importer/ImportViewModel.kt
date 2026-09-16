@@ -9,6 +9,7 @@ import io.github.zmdld11.shuschedule.data.parser.ParsedCourse
 import io.github.zmdld11.shuschedule.data.parser.SemesterCodes
 import io.github.zmdld11.shuschedule.data.parser.ZfKbListParser
 import io.github.zmdld11.shuschedule.data.repo.ScheduleRepository
+import io.github.zmdld11.shuschedule.widget.WidgetUpdater
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -49,6 +50,7 @@ sealed interface ImportState {
 @HiltViewModel
 class ImportViewModel @Inject constructor(
     private val repository: ScheduleRepository,
+    private val widgetUpdater: WidgetUpdater,
 ) : ViewModel() {
 
     private val json = Json { ignoreUnknownKeys = true }
@@ -148,6 +150,7 @@ class ImportViewModel @Inject constructor(
                     parsed = preview.courses,
                 )
             }.onSuccess {
+                widgetUpdater.pushAll()
                 _state.value = ImportState.Done(
                     importedCourses = preview.courses.size,
                     semesterName = "${preview.year}-${preview.year + 1}学年${preview.term.label}",

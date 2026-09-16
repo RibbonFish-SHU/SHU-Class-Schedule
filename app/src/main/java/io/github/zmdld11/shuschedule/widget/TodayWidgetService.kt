@@ -1,0 +1,68 @@
+package io.github.zmdld11.shuschedule.widget
+
+import android.content.Context
+import android.content.Intent
+import android.widget.RemoteViews
+import android.widget.RemoteViewsService
+import dagger.hilt.android.AndroidEntryPoint
+import io.github.zmdld11.shuschedule.R
+import io.github.zmdld11.shuschedule.data.repo.ScheduleRepository
+import kotlinx.coroutines.runBlocking
+import javax.inject.Inject
+
+/** 4×2 / 4×4 今日课程列表的集合小组件数据源 */
+@AndroidEntryPoint
+class TodayWidgetService : RemoteViewsService() {
+
+    @Inject lateinit var repository: ScheduleRepository
+
+    override fun onGetViewFactory(intent: Intent): RemoteViewsFactory =
+        TodayListFactory(applicationContext, repository)
+
+    class TodayListFactory(
+        private val context: Context,
+        private val repository: ScheduleRepository,
+    ) : RemoteViewsFactory {
+
+        private var items: List<TodayItem> = emptyList()
+
+        override fun onCreate() {}
+
+        override fun onDataSetChanged() {
+            // RemoteViewsFactory 回调在主线程外的 binder 线程，同步短查询可接受（课表数据量极小）
+            runBlocking {
+                val semester = repository.activeSemester()
+                val data = if (semester == null) {
+                    TodaySchedule.build(null, emptyList(), emptyList())
+                } else {
+                    TodaySchedule.build(
+                        semester,
+                        repository.getSemesterCourses(semester.id),
+                        repository.timeSlots(),
+                    )
+                }
+                items = data.items
+            }
+        }
+
+        override fun onDestroy() {
+            items = emptyList()
+        }
+
+        override fun getCount(): Int = items.size
+
+        override fun getViewAt(position: Int): RemoteViews {
+            val item = items.getOrElse(position) { return RemoteViews(context.packageName, R.layout.widget_today_list_item) }
+            return RemoteViews(context.packageName, R.layout.widget_today_list_item).apply {
+                setTextViewText(R.id.widget_item_time, if (item.startTime.isBlank()) "第${item.startNode}节" else "${item.startTime}\n${item.endTime}")
+                setTextViewText(R.id.widget_item_name, item.name)
+                setTextViewText(R.id.widget_item_info, listOf(item.place, item.teacher).filter { it.isNotBlank() }.joinToString(" · "))
+            }
+        }
+
+        override fun getLoadingView(): RemoteViews? = null
+        override fun getViewTypeCount(): Int = 1
+        override fun getItemId(position: Int): Long = position.toLong()
+        override fun hasStableIds(): Boolean = false
+    }
+}
