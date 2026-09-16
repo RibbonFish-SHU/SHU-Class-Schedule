@@ -115,3 +115,37 @@ data class TimeSlot(
     val startTime: String,
     val endTime: String,
 )
+
+/**
+ * 节假日调休的按天覆盖：某学期的某周某天不上课（放假）或按另一周几的课表上（调休补课）。
+ * 教务不回传整天级的调课安排，由用户长按周视图列头手动设置。
+ */
+@Entity(
+    tableName = "day_overrides",
+    foreignKeys = [
+        ForeignKey(
+            entity = Semester::class,
+            parentColumns = ["id"],
+            childColumns = ["semesterId"],
+            onDelete = ForeignKey.CASCADE,
+        )
+    ],
+    indices = [Index(value = ["semesterId", "week", "weekday"], unique = true)],
+)
+data class DayOverride(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val semesterId: Long,
+    val week: Int,
+    val weekday: Int,
+    /** MODE_HOLIDAY=放假不上课；MODE_SUBSTITUTE=按 substituteWeekday 的课表上 */
+    val mode: Int,
+    val substituteWeekday: Int = 0,
+) {
+    companion object {
+        const val MODE_HOLIDAY = 0
+        const val MODE_SUBSTITUTE = 1
+
+        /** 显示用：「休」/「班·周三」 */
+        val WEEKDAY_CHARS = listOf("一", "二", "三", "四", "五", "六", "日")
+    }
+}

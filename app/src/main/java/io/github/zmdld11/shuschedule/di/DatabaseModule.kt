@@ -10,6 +10,7 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import io.github.zmdld11.shuschedule.data.db.CourseDao
+import io.github.zmdld11.shuschedule.data.db.DayOverrideDao
 import io.github.zmdld11.shuschedule.data.db.SemesterDao
 import io.github.zmdld11.shuschedule.data.db.ShuScheduleDatabase
 import io.github.zmdld11.shuschedule.data.db.TimeSlotDao
@@ -23,6 +24,29 @@ private class Migration2To3 : Migration(2, 3) {
     }
 }
 
+/** v3→v4：节假日调休按天覆盖表 */
+private class Migration3To4 : Migration(3, 4) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `day_overrides` (
+              `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+              `semesterId` INTEGER NOT NULL,
+              `week` INTEGER NOT NULL,
+              `weekday` INTEGER NOT NULL,
+              `mode` INTEGER NOT NULL,
+              `substituteWeekday` INTEGER NOT NULL DEFAULT 0,
+              FOREIGN KEY(`semesterId`) REFERENCES `semesters`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
+            )
+            """.trimIndent()
+        )
+        db.execSQL(
+            "CREATE UNIQUE INDEX IF NOT EXISTS `index_day_overrides_semesterId_week_weekday` " +
+                "ON `day_overrides` (`semesterId`, `week`, `weekday`)"
+        )
+    }
+}
+
 @Module
 @InstallIn(SingletonComponent::class)
 object DatabaseModule {
@@ -31,8 +55,8 @@ object DatabaseModule {
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): ShuScheduleDatabase =
         Room.databaseBuilder(context, ShuScheduleDatabase::class.java, "shu_schedule.db")
-            .addMigrations(Migration2To3())
-            // 开发期兜底（已提供 v2→v3 迁移，正常升级不触发破坏性重建）
+            .addMigrations(Migration2To3(), Migration3To4())
+            // 开发期兜底（已提供 v2→v4 迁移，正常升级不触发破坏性重建）
             .fallbackToDestructiveMigration(true)
             .build()
 
@@ -41,4 +65,6 @@ object DatabaseModule {
     @Provides fun provideCourseDao(db: ShuScheduleDatabase): CourseDao = db.courseDao()
 
     @Provides fun provideTimeSlotDao(db: ShuScheduleDatabase): TimeSlotDao = db.timeSlotDao()
+
+    @Provides fun provideDayOverrideDao(db: ShuScheduleDatabase): DayOverrideDao = db.dayOverrideDao()
 }

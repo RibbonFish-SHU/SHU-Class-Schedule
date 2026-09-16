@@ -4,8 +4,10 @@ import androidx.room.withTransaction
 import io.github.zmdld11.shuschedule.data.backup.BackupCodec
 import io.github.zmdld11.shuschedule.data.db.Course
 import io.github.zmdld11.shuschedule.data.db.CourseDao
+import io.github.zmdld11.shuschedule.data.db.DayOverrideDao
 import io.github.zmdld11.shuschedule.data.db.CourseSession
 import io.github.zmdld11.shuschedule.data.db.CourseWithSessions
+import io.github.zmdld11.shuschedule.data.db.DayOverride
 import io.github.zmdld11.shuschedule.data.db.Semester
 import io.github.zmdld11.shuschedule.data.db.SemesterDao
 import io.github.zmdld11.shuschedule.data.db.ShuScheduleDatabase
@@ -27,11 +29,29 @@ class ScheduleRepository @Inject constructor(
     private val semesterDao: SemesterDao,
     private val courseDao: CourseDao,
     private val timeSlotDao: TimeSlotDao,
+    private val dayOverrideDao: DayOverrideDao,
 ) {
 
     fun observeSemesters(): Flow<List<Semester>> = semesterDao.observeAll()
 
     fun observeActiveSemester(): Flow<Semester?> = semesterDao.observeActive()
+
+    fun observeDayOverrides(semesterId: Long): Flow<List<DayOverride>> =
+        dayOverrideDao.observeForSemester(semesterId)
+
+    suspend fun getDayOverrides(semesterId: Long): List<DayOverride> =
+        dayOverrideDao.getForSemester(semesterId)
+
+    /** 设置某天覆盖；mode<0 表示清除（恢复正常） */
+    suspend fun setDayOverride(semesterId: Long, week: Int, weekday: Int, mode: Int, substituteWeekday: Int) {
+        if (mode < 0) {
+            dayOverrideDao.delete(semesterId, week, weekday)
+        } else {
+            dayOverrideDao.upsert(
+                DayOverride(semesterId = semesterId, week = week, weekday = weekday, mode = mode, substituteWeekday = substituteWeekday),
+            )
+        }
+    }
 
     fun observeCourses(semesterId: Long): Flow<List<CourseWithSessions>> =
         courseDao.observeSemesterCourses(semesterId)

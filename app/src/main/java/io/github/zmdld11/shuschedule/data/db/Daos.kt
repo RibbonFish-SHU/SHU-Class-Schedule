@@ -108,3 +108,18 @@ interface TimeSlotDao {
     @Query("DELETE FROM time_slots")
     suspend fun deleteAll()
 }
+
+@Dao
+interface DayOverrideDao {
+    @Query("SELECT * FROM day_overrides WHERE semesterId = :semesterId")
+    fun observeForSemester(semesterId: Long): Flow<List<DayOverride>>
+
+    @Query("SELECT * FROM day_overrides WHERE semesterId = :semesterId")
+    suspend fun getForSemester(semesterId: Long): List<DayOverride>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(override: DayOverride)
+
+    @Query("DELETE FROM day_overrides WHERE semesterId = :semesterId AND week = :week AND weekday = :weekday")
+    suspend fun delete(semesterId: Long, week: Int, weekday: Int)
+}

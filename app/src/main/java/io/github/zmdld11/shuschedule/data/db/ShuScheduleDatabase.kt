@@ -15,8 +15,8 @@ class Converters {
 }
 
 @Database(
-    entities = [Semester::class, Course::class, CourseSession::class, TimeSlot::class],
-    version = 3,
+    entities = [Semester::class, Course::class, CourseSession::class, TimeSlot::class, DayOverride::class],
+    version = 4,
     exportSchema = false,
 )
 @TypeConverters(Converters::class)
@@ -24,4 +24,5 @@ abstract class ShuScheduleDatabase : RoomDatabase() {
     abstract fun semesterDao(): SemesterDao
     abstract fun courseDao(): CourseDao
     abstract fun timeSlotDao(): TimeSlotDao
+    abstract fun dayOverrideDao(): DayOverrideDao
 }
