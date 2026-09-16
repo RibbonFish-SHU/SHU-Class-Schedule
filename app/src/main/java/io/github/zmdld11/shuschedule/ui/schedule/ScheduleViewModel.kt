@@ -7,6 +7,7 @@ import io.github.zmdld11.shuschedule.data.db.Course
 import io.github.zmdld11.shuschedule.data.db.CourseSession
 import io.github.zmdld11.shuschedule.data.db.CourseWithSessions
 import io.github.zmdld11.shuschedule.data.db.Semester
+import io.github.zmdld11.shuschedule.data.db.TermType
 import io.github.zmdld11.shuschedule.data.db.TimeSlot
 import io.github.zmdld11.shuschedule.data.parser.WeekTextParser
 import io.github.zmdld11.shuschedule.data.repo.ScheduleRepository
@@ -65,9 +66,11 @@ class ScheduleViewModel @Inject constructor(
 
     private val _semesterFlow = repository.observeActiveSemester()
 
-    /** 全部学期（顶栏快捷切换用） */
+    /** 顶栏下拉展示的学期：默认隐藏冬季（教务查不到数据），激活学期始终可见 */
     val semesters: StateFlow<List<Semester>> =
-        repository.observeSemesters().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+        kotlinx.coroutines.flow.combine(repository.observeSemesters(), settings.showWinter) { list, showWinter ->
+            if (showWinter) list else list.filter { it.isActive || it.term != TermType.WINTER }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val state: StateFlow<ScheduleUiState> = _semesterFlow
         .flatMapLatest { semester ->

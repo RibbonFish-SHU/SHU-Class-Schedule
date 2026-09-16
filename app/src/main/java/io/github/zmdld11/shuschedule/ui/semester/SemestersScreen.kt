@@ -44,6 +44,7 @@ import io.github.zmdld11.shuschedule.data.db.Semester
 import io.github.zmdld11.shuschedule.data.db.TermType
 import io.github.zmdld11.shuschedule.data.parser.SemesterCodes
 import io.github.zmdld11.shuschedule.data.repo.ScheduleRepository
+import io.github.zmdld11.shuschedule.data.settings.SettingsStore
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
@@ -56,10 +57,14 @@ import javax.inject.Inject
 @HiltViewModel
 class SemestersViewModel @Inject constructor(
     private val repository: ScheduleRepository,
+    settings: SettingsStore,
 ) : ViewModel() {
 
+    /** 列表展示的学期：默认隐藏冬季（教务查不到数据），激活学期始终可见 */
     val semesters: StateFlow<List<Semester>> =
-        repository.observeSemesters().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+        kotlinx.coroutines.flow.combine(repository.observeSemesters(), settings.showWinter) { list, showWinter ->
+            if (showWinter) list else list.filter { it.isActive || it.term != TermType.WINTER }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun activate(id: Long) = viewModelScope.launch { repository.activateSemester(id) }
 

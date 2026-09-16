@@ -47,4 +47,13 @@ class SettingsStore @Inject constructor(
     suspend fun setShowSlotEnd(value: Boolean) {
         context.dataStore.edit { it[showSlotEndKey] = value }
     }
+
+    /** 学期列表是否显示冬季学期；教务目前查不到冬季课表，默认隐藏（激活中的除外，在过滤处处理） */
+    private val showWinterKey = booleanPreferencesKey("show_winter")
+
+    val showWinter: Flow<Boolean> = context.dataStore.data.map { it[showWinterKey] ?: false }
+
+    suspend fun setShowWinter(value: Boolean) {
+        context.dataStore.edit { it[showWinterKey] = value }
+    }
 }
