@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -50,13 +51,20 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 
+/** 学期下拉采集轮询次数（×700ms ≈ 8.4s 超时，等教务页自身 JS 渲染完） */
+private const val HARVEST_TRIES = 12
+
 /** WebView 与原生侧的 JS 桥（仅上报数据，不提供任何可执行入口） */
 private class ImportWebBridge(
     private val onProbe: (Boolean) -> Unit,
+    private val onSemesters: (String) -> Unit,
     private val onSchedule: (String) -> Unit,
 ) {
     @JavascriptInterface
     fun onLoginProbe(ok: Boolean) = onProbe(ok)
+
+    @JavascriptInterface
+    fun onSemesterJson(json: String) = onSemesters(json)
 
     @JavascriptInterface
     fun onScheduleJson(json: String) = onSchedule(json)
@@ -71,14 +79,19 @@ fun ImportScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val probeScript by viewModel.loginProbeScript.collectAsStateWithLifecycle()
     val fetchScript by viewModel.fetchScript.collectAsStateWithLifecycle()
+    val loadUrl by viewModel.loadUrl.collectAsStateWithLifecycle()
+    val choices by viewModel.semesterChoices.collectAsStateWithLifecycle()
+    val harvestFailed by viewModel.harvestFailed.collectAsStateWithLifecycle()
     val selectedYear by viewModel.selectedYear.collectAsStateWithLifecycle()
     val selectedTerm by viewModel.selectedTerm.collectAsStateWithLifecycle()
+    val selectedTermOption by viewModel.selectedTermOption.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
 
     var webView by remember { mutableStateOf<WebView?>(null) }
     val bridge = remember {
         ImportWebBridge(
             onProbe = viewModel::onLoginProbe,
+            onSemesters = viewModel::onSemesterJson,
             onSchedule = viewModel::onScheduleJson,
         )
     }
@@ -89,6 +102,26 @@ fun ImportScreen(
             webView?.evaluateJavascript(js, null)
             viewModel.consumeFetchScript()
         }
+    }
+
+    // 登录成功 → 导航到课表查询页（读真实学期编码）
+    LaunchedEffect(loadUrl) {
+        loadUrl?.let { url ->
+            webView?.loadUrl(url)
+            viewModel.consumeLoadUrl()
+        }
+    }
+
+    // 采集轮询：查询页加载后注入采集脚本，读到下拉或超时为止
+    val harvestActive = state is ImportState.Ready && choices == null && !harvestFailed
+    val harvestScript = remember { JwxkSpec.semesterHarvestScript(ImportViewModel.BRIDGE_NAME) }
+    LaunchedEffect(harvestActive, webView) {
+        if (!harvestActive) return@LaunchedEffect
+        repeat(HARVEST_TRIES) {
+            webView?.evaluateJavascript(harvestScript, null)
+            delay(700)
+        }
+        viewModel.onHarvestGaveUp()
     }
 
     // 登录态轮询：每 3 秒注入一次探测脚本
@@ -128,31 +161,70 @@ fun ImportScreen(
                     LinearProgressIndicator(Modifier.fillMaxWidth())
                 }
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("学年 ${selectedYear}-${selectedYear + 1}", style = MaterialTheme.typography.titleSmall)
-                        Spacer(Modifier.height(4.dp))
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        listOf(-1, 1).forEach { delta ->
-                            OutlinedButton(onClick = { viewModel.selectedYear.value += delta }) {
-                                Text(if (delta < 0) "上一年" else "下一年")
+                    val semesterChoices = choices
+                    if (semesterChoices != null) {
+                        // 动态模式：教务下拉框里读出来的真实学年/学期
+                        Text("学年", style = MaterialTheme.typography.titleSmall)
+                        Row(
+                            Modifier.horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            semesterChoices.years.sortedByDescending { it.value }.forEach { y ->
+                                FilterChip(
+                                    selected = selectedYear == y.value,
+                                    onClick = { viewModel.selectYearOption(y) },
+                                    label = { Text(y.display) },
+                                )
                             }
                         }
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        TermType.entries.forEach { term ->
-                            FilterChip(
-                                selected = selectedTerm == term,
-                                onClick = { viewModel.selectedTerm.value = term },
-                                label = { Text(term.label) },
-                            )
+                        Spacer(Modifier.height(6.dp))
+                        Text("学期", style = MaterialTheme.typography.titleSmall)
+                        Row(
+                            Modifier.horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            semesterChoices.terms.forEach { t ->
+                                FilterChip(
+                                    selected = selectedTermOption?.value == t.value,
+                                    onClick = { viewModel.selectTermOption(t) },
+                                    label = { Text(t.display) },
+                                )
+                            }
+                        }
+                    } else {
+                        // 静态兜底：采集失败/未完成时用默认编码
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("学年 ${selectedYear}-${selectedYear + 1}", style = MaterialTheme.typography.titleSmall)
+                            Spacer(Modifier.height(4.dp))
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            listOf(-1, 1).forEach { delta ->
+                                OutlinedButton(onClick = { viewModel.selectedYear.value += delta }) {
+                                    Text(if (delta < 0) "上一年" else "下一年")
+                                }
+                            }
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            TermType.entries.forEach { term ->
+                                FilterChip(
+                                    selected = selectedTerm == term,
+                                    onClick = { viewModel.selectedTerm.value = term },
+                                    label = { Text(term.label) },
+                                )
+                            }
                         }
                     }
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        text = when (state) {
-                            is ImportState.WaitingLogin -> "① 在下方「上海大学统一身份认证」页登录（账号即一卡通）；② 登录成功回到教务页面后，点「开始抓取」。密码只进学校官方页面，本应用不保存。"
-                            is ImportState.Ready -> "已检测到登录态 ✓ 选择学年学期后点「开始抓取」"
+                        text = when {
+                            state is ImportState.WaitingLogin ->
+                                "① 在下方「上海大学统一身份认证」页登录（账号即一卡通）；② 登录成功后自动跳到教务课表页，点「开始抓取」。密码只进学校官方页面，本应用不保存。"
+                            state is ImportState.Ready && choices != null ->
+                                "已读取教务学期列表 ✓ 确认学年学期后点「开始抓取」"
+                            state is ImportState.Ready && harvestFailed ->
+                                "已检测到登录态 ✓ 但未读到教务学期列表，暂用默认编码（若抓到空课表请提 issue）"
+                            state is ImportState.Ready ->
+                                "已检测到登录态 ✓ 正在读取教务的学年学期列表…"
                             else -> "正在抓取课表…"
                         },
                         style = MaterialTheme.typography.bodySmall,
