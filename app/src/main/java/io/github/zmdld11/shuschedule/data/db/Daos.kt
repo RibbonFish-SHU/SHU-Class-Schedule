@@ -26,6 +26,9 @@ interface SemesterDao {
     @Query("SELECT * FROM semesters WHERE isActive = 1 LIMIT 1")
     fun observeActive(): Flow<Semester?>
 
+    @Query("SELECT * FROM semesters WHERE isActive = 1 LIMIT 1")
+    suspend fun getActive(): Semester?
+
     @Query("SELECT * FROM semesters WHERE year = :year AND term = :term LIMIT 1")
     suspend fun findByYearTerm(year: Int, term: TermType): Semester?
 

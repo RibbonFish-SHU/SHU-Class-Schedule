@@ -41,6 +41,10 @@ class ScheduleRepository @Inject constructor(
     suspend fun getSemesterCourses(semesterId: Long): List<CourseWithSessions> =
         courseDao.getSemesterCourses(semesterId)
 
+    suspend fun activeSemester(): Semester? = semesterDao.getActive()
+
+    suspend fun timeSlots(): List<TimeSlot> = timeSlotDao.getAll()
+
     suspend fun activateSemester(id: Long) = semesterDao.activate(id)
 
     suspend fun updateSemesterRange(id: Long, startDateEpochDay: Long, totalWeeks: Int) =

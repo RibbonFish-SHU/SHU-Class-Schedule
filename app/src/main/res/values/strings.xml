@@ -1,4 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">上大课表</string>
+
+    <string name="widget_small_label">下节课</string>
+    <string name="widget_small_desc">下一节课/当前节的卡片</string>
+    <string name="widget_medium_label">今日课程</string>
+    <string name="widget_medium_desc">今天的课程列表</string>
+    <string name="widget_large_label">今日课程（大）</string>
+    <string name="widget_large_desc">今天全部课程与时间</string>
 </resources>
