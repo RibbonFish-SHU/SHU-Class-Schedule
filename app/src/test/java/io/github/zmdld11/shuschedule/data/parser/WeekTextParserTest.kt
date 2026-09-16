@@ -50,4 +50,15 @@ class WeekTextParserTest {
         val back = io.github.zmdld11.shuschedule.data.db.CourseSession.weeksOf(mask).sorted()
         assertEquals((2..16 step 2).toList(), back)
     }
+
+    @Test
+    fun diPrefixSingleWeek() {
+        assertEquals(setOf(13), WeekTextParser.parseWeeks("第13周"))
+        assertEquals(setOf(1), WeekTextParser.parseWeeks("第1周"))
+    }
+
+    @Test
+    fun diPrefixRange() {
+        assertEquals((9..16).toSet(), WeekTextParser.parseWeeks("第9-16周"))
+    }
 }

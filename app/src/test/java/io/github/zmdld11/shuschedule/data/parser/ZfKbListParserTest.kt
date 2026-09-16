@@ -92,6 +92,29 @@ class ZfKbListParserTest {
         assertTrue(ZfKbListParser.parse("""{"kbList": []}""").isEmpty())
     }
 
+    /** #20 真机 kbList 实测形态：调课记录 zcd 为「第X周」，原教师记录扣除该周后分段 */
+    @Test
+    fun parsesDiPrefixRescheduleWeeks() {
+        val json = """
+        {
+          "kbList": [
+            {"kcmc": "计算机网络", "kch": "CS1234", "jxb_id": "J1", "xm": "钱权",
+             "xqj": "4", "jcs": "3-4", "zcd": "2-8周", "cdmc": "FJ306"},
+            {"kcmc": "计算机网络", "kch": "CS1234", "jxb_id": "J1", "xm": "张瑞",
+             "xqj": "4", "jcs": "3-4", "zcd": "第1周", "cdmc": "FJ306"}
+          ]
+        }
+        """.trimIndent()
+        val net = ZfKbListParser.parse(json).single()
+        val thu = net.sessions.filter { it.weekday == 4 }
+        // 两条周次不交集 → 共存且各自精确：第1周=张瑞，2-8周=钱权
+        assertEquals(2, thu.size)
+        val zhang = thu.first { it.teacher == "张瑞" }
+        val qian = thu.first { it.teacher == "钱权" }
+        assertEquals(CourseSession.maskOf(listOf(1)), zhang.weeksMask)
+        assertEquals(CourseSession.maskOf((2..8).toList()), qian.weeksMask)
+    }
+
     /** 调课消解（#18）：同学期同课同星期同节次、周次有交集时保留周次更长（原教师）记录 */
     private val rescheduleFixture = """
     {
@@ -128,7 +151,7 @@ class ZfKbListParserTest {
     @Test
     fun keepsOriginalTeacherOnOverlappingConflict() {
         val course = ZfKbListParser.parse(rescheduleFixture).single()
-        // 周三7-8：原教师 1-16周 与 现教师 1-16周 完全重叠 → 保留先出现的原教师
+        // 周三7-8：两条 1-16周 等长 → 平手保留先出现的（教务常规记录在前）
         val wed = course.sessions.filter { it.weekday == 3 }
         assertEquals(1, wed.size)
         assertEquals("骆祥峰", wed[0].teacher)
@@ -141,4 +164,5 @@ class ZfKbListParserTest {
         assertEquals(CourseSession.maskOf((1..16).toList()), fri[0].weeksMask)
         assertEquals("王欣芝", fri[1].teacher)
     }
+
 }

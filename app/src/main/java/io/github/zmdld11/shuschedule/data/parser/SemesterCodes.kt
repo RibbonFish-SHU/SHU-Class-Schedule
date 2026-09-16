@@ -15,15 +15,17 @@ object SemesterCodes {
 
     fun xqmCandidates(term: TermType): List<Int> = when (term) {
         TermType.AUTUMN -> listOf(3)
-        TermType.WINTER -> listOf(45, 29, 32) // 上大冬季短学期编码未知，待实测校准
-        TermType.SPRING -> listOf(12)
-        // 32 为 jwxk 助手 .env 实测值（教务改版后夏季编码）
-        TermType.SUMMER -> listOf(32, 16)
+        TermType.WINTER -> listOf(45, 29) // 上大冬季短学期教务查不到数据，编码未知
+        // 2026-09 真机导入实测校准：春=16（用户预览页回贴）
+        TermType.SPRING -> listOf(16)
+        // 32 为 jwxk 助手 .env 实测值；16 在上大实际是春季，不得混入夏季探测
+        TermType.SUMMER -> listOf(32)
     }
 
     /**
      * 教务学期下拉选项 → 本地 TermType：优先认教务 label 里的季节用词，
      * 认不出再按已知编码兜底；都不认识返回 null（调用方自行决定归属）。
+     * 上大当前实测编码：秋=3、春=16、夏=32（冬未知）。
      */
     fun termTypeOf(label: String, code: Int): TermType? = when {
         label.contains("秋") -> TermType.AUTUMN
@@ -32,8 +34,8 @@ object SemesterCodes {
         label.contains("夏") -> TermType.SUMMER
         else -> when (code) {
             3 -> TermType.AUTUMN
-            12 -> TermType.SPRING
-            16, 32 -> TermType.SUMMER
+            12, 16 -> TermType.SPRING
+            32 -> TermType.SUMMER
             45, 29 -> TermType.WINTER
             else -> null
         }

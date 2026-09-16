@@ -19,7 +19,7 @@ class SemesterCodesTest {
     @Test
     fun xqmPrimaryCandidates() {
         assertEquals(3, SemesterCodes.xqmCandidates(TermType.AUTUMN).first())
-        assertEquals(12, SemesterCodes.xqmCandidates(TermType.SPRING).first())
+        assertEquals(16, SemesterCodes.xqmCandidates(TermType.SPRING).first()) // 2026-09 真机导入实测：上大春=16
         assertEquals(32, SemesterCodes.xqmCandidates(TermType.SUMMER).first()) // jwxk .env 实测：改版后夏季=32
         // 冬季编码未知但必须给出可探测序列
         assertTrue(SemesterCodes.xqmCandidates(TermType.WINTER).isNotEmpty())

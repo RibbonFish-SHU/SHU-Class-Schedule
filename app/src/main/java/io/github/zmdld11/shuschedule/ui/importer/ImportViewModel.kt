@@ -43,6 +43,8 @@ sealed interface ImportState {
         val courses: List<ParsedCourse>,
         val suggestedStart: LocalDate,
         val emptySemester: Boolean,
+        /** 教务返回的原始 payload JSON（「复制原始数据」与问题定位用） */
+        val rawJson: String = "",
     ) : ImportState
 
     data class Done(val importedCourses: Int, val semesterName: String) : ImportState
@@ -187,6 +189,11 @@ class ImportViewModel @Inject constructor(
         val courses = ZfKbListParser.parse(
             JsonObject(mapOf("kbList" to kbList)).let { json.encodeToString(JsonElement.serializer(), it) }
         )
+        val rawJson = envelope["payload"]?.toString() ?: ""
+        // 分块打进 logcat（tag=ShuImport），供真机/模拟器问题定位时直接 adb 抓取
+        rawJson.chunked(3000).forEachIndexed { i, chunk ->
+            android.util.Log.d("ShuImport", "raw[$i]=$chunk")
+        }
         _state.value = ImportState.Preview(
             year = selectedYear.value,
             term = selectedTerm.value,
@@ -194,6 +201,7 @@ class ImportViewModel @Inject constructor(
             courses = courses,
             suggestedStart = defaultSemesterStart(selectedYear.value, selectedTerm.value),
             emptySemester = empty || courses.isEmpty(),
+            rawJson = rawJson,
         )
     }
 
