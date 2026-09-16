@@ -82,6 +82,7 @@ fun ScheduleScreen(
     val detail by viewModel.detailCourse.collectAsStateWithLifecycle()
     val editorTarget by viewModel.editorTarget.collectAsStateWithLifecycle()
     val semesters by viewModel.semesters.collectAsStateWithLifecycle()
+    val updateInfo by viewModel.updateInfo.collectAsStateWithLifecycle()
     val showOffWeek by viewModel.showOffWeek.collectAsStateWithLifecycle()
     val showWeekend by viewModel.showWeekend.collectAsStateWithLifecycle()
     val showSlotEnd by viewModel.showSlotEnd.collectAsStateWithLifecycle()
@@ -391,6 +392,7 @@ fun ScheduleScreen(
                 currentWeek = week,
                 onEditSession = { s -> viewModel.openSessionEditor(course.course, s) },
                 onAddSession = { viewModel.openSessionEditor(course.course, null) },
+                onReschedule = { s -> viewModel.openSessionEditor(course.course, s, reschedule = true) },
                 onDeleteCourse = { deletingCourse = course },
                 modifier = Modifier.padding(horizontal = 24.dp).padding(bottom = 32.dp),
             )
@@ -405,13 +407,46 @@ fun ScheduleScreen(
                 initialSession = target.session,
                 slotCount = maxOf(state.timeSlots.size, 12),
                 isNewCourse = target.course.id == 0L,
+                rescheduleMode = target.reschedule,
+                currentWeek = currentWeek,
                 onSave = { nm, wd, sn, en, wt, r, t, cp ->
                     viewModel.saveSessionEdit(nm, wd, sn, en, wt, r, t, cp)
                 },
-                onDeleteSession = if (target.session != null) viewModel::deleteEditingSession else null,
+                onSaveReschedule = { w, wd, sn, en, r, t, cp ->
+                    viewModel.saveReschedule(w, wd, sn, en, r, t, cp)
+                },
+                onDeleteSession = if (target.session != null && !target.reschedule) viewModel::deleteEditingSession else null,
                 onDismiss = viewModel::closeEditor,
             )
         }
+    }
+
+    // 发现新版本
+    updateInfo?.let { info ->
+        val context = androidx.compose.ui.platform.LocalContext.current
+        AlertDialog(
+            onDismissRequest = viewModel::dismissUpdate,
+            title = { Text("发现新版本 ${info.tagName}") },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    Text(info.body.ifBlank { info.name }, style = MaterialTheme.typography.bodySmall)
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.dismissUpdate()
+                    runCatching {
+                        context.startActivity(
+                            android.content.Intent(
+                                android.content.Intent.ACTION_VIEW,
+                                android.net.Uri.parse(info.htmlUrl.ifBlank { info.apkUrl }),
+                            ),
+                        )
+                    }
+                }) { Text("浏览器下载") }
+            },
+            dismissButton = { TextButton(onClick = viewModel::dismissUpdate) { Text("稍后") } },
+        )
     }
 
     // 删除整门课确认
@@ -469,6 +504,7 @@ private fun CourseDetailContent(
     currentWeek: Int,
     onEditSession: (CourseSession) -> Unit,
     onAddSession: () -> Unit,
+    onReschedule: (CourseSession) -> Unit,
     onDeleteCourse: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -485,7 +521,14 @@ private fun CourseDetailContent(
         )
         Spacer(Modifier.height(4.dp))
         course.sessions.sortedWith(compareBy({ it.weekday }, { it.startNode })).forEach { s ->
-            SessionRow(session = s, currentWeek = currentWeek, onClick = { onEditSession(s) })
+            SessionRow(
+                session = s,
+                currentWeek = currentWeek,
+                onClick = { onEditSession(s) },
+                onReschedule = if (CourseSession.weeksOf(s.weeksMask).size >= 2) {
+                    { onReschedule(s) }
+                } else null,
+            )
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             TextButton(onClick = onAddSession) { Text("添加时段") }
@@ -498,7 +541,12 @@ private fun CourseDetailContent(
 }
 
 @Composable
-private fun SessionRow(session: CourseSession, currentWeek: Int, onClick: () -> Unit) {
+private fun SessionRow(
+    session: CourseSession,
+    currentWeek: Int,
+    onClick: () -> Unit,
+    onReschedule: (() -> Unit)? = null,
+) {
     val hasThisWeek = session.hasWeek(currentWeek)
     Row(
         Modifier
@@ -542,6 +590,9 @@ private fun SessionRow(session: CourseSession, currentWeek: Int, onClick: () -> 
             style = MaterialTheme.typography.labelMedium,
             color = if (hasThisWeek) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
         )
+        if (onReschedule != null) {
+            TextButton(onClick = onReschedule) { Text("调课", style = MaterialTheme.typography.labelMedium) }
+        }
     }
 }
 

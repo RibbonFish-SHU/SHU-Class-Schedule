@@ -17,6 +17,8 @@ data class TodayItem(
     val endTime: String,
     val place: String,   // 校区·教室
     val teacher: String,
+    /** 该节正在上课中（当前时间落在其起止内） */
+    val inProgress: Boolean = false,
 )
 
 data class TodayData(
@@ -24,6 +26,8 @@ data class TodayData(
     val week: Int,
     val weekLabel: String,   // "第3周 · 周三 9/16"
     val items: List<TodayItem>,
+    /** 未结束的课程（已下课的剔除，列表小组件往上顶显示） */
+    val upcomingItems: List<TodayItem>,
     /** items 中"接下来"那节的下标（正在上=该节；已全结束=null）；无课=null */
     val nextIndex: Int?,
     val inClass: Boolean,
@@ -41,7 +45,7 @@ object TodaySchedule {
         clock: LocalTime = LocalTime.now(),
     ): TodayData {
         if (semester == null) {
-            return TodayData("", 0, "未导入课表", emptyList(), null, inClass = false)
+            return TodayData("", 0, "未导入课表", emptyList(), emptyList(), null, inClass = false)
         }
         val days = now.toEpochDay() - semester.startDateEpochDay
         val week = ((days / 7) + 1).toInt().coerceIn(1, semester.totalWeeks)
@@ -77,11 +81,18 @@ object TodaySchedule {
             }
         }
 
+        // 时间感知：正在上的那节打标；已下课的剔除（时间未知的不剔除）
+        val marked = items.mapIndexed { i, item ->
+            item.copy(inProgress = i == nextIndex && inClass)
+        }
+        val upcoming = marked.filter { it.endTime.isBlank() || nowStr <= it.endTime }
+
         return TodayData(
             semesterName = semester.displayName,
             week = week,
             weekLabel = "第${week}周 · 周${DAY_CHARS[weekday - 1]} ${now.monthValue}/${now.dayOfMonth}",
-            items = items,
+            items = marked,
+            upcomingItems = upcoming,
             nextIndex = nextIndex,
             inClass = inClass,
         )

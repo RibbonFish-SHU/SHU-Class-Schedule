@@ -3,6 +3,7 @@ package io.github.zmdld11.shuschedule.ui.schedule
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import io.github.zmdld11.shuschedule.BuildConfig
 import io.github.zmdld11.shuschedule.data.db.Course
 import io.github.zmdld11.shuschedule.data.db.CourseSession
 import io.github.zmdld11.shuschedule.data.db.CourseWithSessions
@@ -12,12 +13,15 @@ import io.github.zmdld11.shuschedule.data.db.TimeSlot
 import io.github.zmdld11.shuschedule.data.parser.WeekTextParser
 import io.github.zmdld11.shuschedule.data.repo.ScheduleRepository
 import io.github.zmdld11.shuschedule.data.settings.SettingsStore
+import io.github.zmdld11.shuschedule.data.update.UpdateCheckClient
+import io.github.zmdld11.shuschedule.data.update.UpdateChecker
 import io.github.zmdld11.shuschedule.widget.WidgetUpdater
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
@@ -49,8 +53,32 @@ data class ScheduleUiState(
 class ScheduleViewModel @Inject constructor(
     private val repository: ScheduleRepository,
     private val widgetUpdater: WidgetUpdater,
+    private val updateClient: UpdateCheckClient,
     settings: SettingsStore,
 ) : ViewModel() {
+
+    init {
+        // 启动自动检查更新（每天最多一次，失败静默）
+        viewModelScope.launch {
+            val today = java.time.LocalDate.now().toEpochDay().toInt()
+            val last = settings.lastUpdateCheckDay.first()
+            if (today - last >= 1) {
+                settings.setLastUpdateCheckDay(today)
+                val latest = updateClient.fetchLatest() ?: return@launch
+                if (UpdateChecker.isNewer(BuildConfig.VERSION_NAME, latest.versionName)) {
+                    _updateInfo.value = latest
+                }
+            }
+        }
+    }
+
+    /** 有新版本时的弹窗数据 */
+    private val _updateInfo = MutableStateFlow<UpdateChecker.ReleaseInfo?>(null)
+    val updateInfo: StateFlow<UpdateChecker.ReleaseInfo?> = _updateInfo.asStateFlow()
+
+    fun dismissUpdate() {
+        _updateInfo.value = null
+    }
 
     /** 周视图是否置灰显示非本周课程 */
     val showOffWeek: StateFlow<Boolean> =
@@ -112,15 +140,19 @@ class ScheduleViewModel @Inject constructor(
 
     // ---------- 课程手动编辑 ----------
 
-    /** 编辑目标：session=null 表示给该课新增时段；course.id=0 表示新建自定义课程 */
-    data class SessionEditTarget(val course: Course, val session: CourseSession?)
+    /** 编辑目标：session=null 表示给该课新增时段；course.id=0 表示新建自定义课程；reschedule=true 为调休模式 */
+    data class SessionEditTarget(
+        val course: Course,
+        val session: CourseSession?,
+        val reschedule: Boolean = false,
+    )
 
     private val _editorTarget = MutableStateFlow<SessionEditTarget?>(null)
     val editorTarget: StateFlow<SessionEditTarget?> = _editorTarget.asStateFlow()
 
-    fun openSessionEditor(course: Course, session: CourseSession?) {
+    fun openSessionEditor(course: Course, session: CourseSession?, reschedule: Boolean = false) {
         _detailCourse.value = null
-        _editorTarget.value = SessionEditTarget(course, session)
+        _editorTarget.value = SessionEditTarget(course, session, reschedule)
     }
 
     fun openNewCourseEditor() {
@@ -217,6 +249,43 @@ class ScheduleViewModel @Inject constructor(
             repository.deleteSessionAndOrphanCourse(session)
             widgetUpdater.pushAll()
             _editorTarget.value = null
+        }
+    }
+
+    /** 调休保存：原时段拆掉该周，新增单周记录（带调课标记） */
+    fun saveReschedule(
+        week: Int,
+        weekday: Int,
+        startNode: Int,
+        endNode: Int,
+        room: String,
+        teacher: String,
+        campus: String,
+    ) {
+        val target = _editorTarget.value ?: return
+        val session = target.session ?: return
+        if (!session.hasWeek(week)) return
+        viewModelScope.launch {
+            runCatching {
+                repository.rescheduleSession(
+                    original = session,
+                    week = week,
+                    newSession = CourseSession(
+                        courseId = session.courseId,
+                        weekday = weekday,
+                        startNode = startNode,
+                        endNode = endNode,
+                        weeksMask = 1 shl (week - 1),
+                        room = room,
+                        teacher = teacher,
+                        campus = campus,
+                        rescheduled = true,
+                    ),
+                )
+            }.onSuccess {
+                widgetUpdater.pushAll()
+                _editorTarget.value = null
+            }
         }
     }
 

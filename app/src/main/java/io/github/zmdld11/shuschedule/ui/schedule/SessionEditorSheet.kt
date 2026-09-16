@@ -30,7 +30,8 @@ import io.github.zmdld11.shuschedule.data.parser.WeekTextParser
 
 /**
  * 课程/时段编辑表单：新建自定义课程、给已有课程加时段、改任意字段。
- * 周次文本走 WeekTextParser 语法（"1-16周"、"2-16周(双)"…），实时预览解析结果。
+ * 周次文本走 WeekTextParser 语法（"1-16周"、"2-16周(单)"…），实时预览解析结果。
+ * rescheduleMode：单周调休——选一个原本上课的周，单独改那周的时间/地点/教师。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -39,6 +40,8 @@ fun SessionEditorSheet(
     initialSession: CourseSession?,
     slotCount: Int,
     isNewCourse: Boolean,
+    rescheduleMode: Boolean = false,
+    currentWeek: Int = 1,
     onSave: (
         name: String,
         weekday: Int,
@@ -49,6 +52,7 @@ fun SessionEditorSheet(
         teacher: String,
         campus: String,
     ) -> Unit,
+    onSaveReschedule: ((week: Int, weekday: Int, startNode: Int, endNode: Int, room: String, teacher: String, campus: String) -> Unit)? = null,
     onDeleteSession: (() -> Unit)?,
     onDismiss: () -> Unit,
 ) {
@@ -56,6 +60,14 @@ fun SessionEditorSheet(
     var weekday by remember { mutableStateOf(initialSession?.weekday ?: 1) }
     var startNode by remember { mutableStateOf(initialSession?.startNode ?: 1) }
     var endNode by remember { mutableStateOf(initialSession?.endNode ?: 2) }
+    // 调休模式：单周选择；普通模式：周次文本
+    var rescheduleWeek by remember {
+        mutableStateOf(
+            (currentWeek.takeIf { initialSession?.hasWeek(it) == true }
+                ?: CourseSession.weeksOf(initialSession?.weeksMask ?: 0).minOrNull()
+                ?: 1).toString()
+        )
+    }
     var weeksText by remember {
         mutableStateOf(
             initialSession?.let { formatWeeks(CourseSession.weeksOf(it.weeksMask)) } ?: "1-16周"
@@ -67,7 +79,13 @@ fun SessionEditorSheet(
 
     val maxNode = maxOf(slotCount, endNode)
     val weeksPreview = formatWeeks(WeekTextParser.parseWeeks(weeksText))
-    val valid = name.isNotBlank() && startNode <= endNode
+    val rescheduleWeekValid = rescheduleWeek.toIntOrNull()
+        ?.let { initialSession?.hasWeek(it) == true } == true
+    val valid = if (rescheduleMode) {
+        rescheduleWeekValid && startNode <= endNode
+    } else {
+        name.isNotBlank() && startNode <= endNode
+    }
 
     Column(
         Modifier
@@ -79,6 +97,7 @@ fun SessionEditorSheet(
     ) {
         Text(
             when {
+                rescheduleMode -> "调课（第 $rescheduleWeek 周）"
                 isNewCourse -> "添加课程"
                 initialSession == null -> "添加时段"
                 else -> "编辑时段"
@@ -91,8 +110,12 @@ fun SessionEditorSheet(
             onValueChange = { name = it },
             label = { Text("课程名") },
             singleLine = true,
-            isError = name.isBlank(),
-            supportingText = if (name.isBlank()) { { Text("课程名不能为空") } } else null,
+            readOnly = rescheduleMode,
+            supportingText = if (rescheduleMode) {
+                { Text("调课不改课程名") }
+            } else if (name.isBlank()) {
+                { Text("课程名不能为空") }
+            } else null,
         )
 
         Text("星期", style = MaterialTheme.typography.titleSmall)
@@ -128,13 +151,29 @@ fun SessionEditorSheet(
             }
         }
 
-        OutlinedTextField(
-            value = weeksText,
-            onValueChange = { weeksText = it },
-            label = { Text("周次") },
-            singleLine = true,
-            supportingText = { Text("将保存为：$weeksPreview") },
-        )
+        if (rescheduleMode) {
+            OutlinedTextField(
+                value = rescheduleWeek,
+                onValueChange = { rescheduleWeek = it.filter(Char::isDigit).take(2) },
+                label = { Text("调课周次") },
+                singleLine = true,
+                isError = !rescheduleWeekValid,
+                supportingText = {
+                    Text(
+                        if (rescheduleWeekValid) "该时段第 $rescheduleWeek 周原本有课，将单独调整这一周"
+                        else "这一周该时段没有课"
+                    )
+                },
+            )
+        } else {
+            OutlinedTextField(
+                value = weeksText,
+                onValueChange = { weeksText = it },
+                label = { Text("周次") },
+                singleLine = true,
+                supportingText = { Text("将保存为：$weeksPreview") },
+            )
+        }
 
         OutlinedTextField(value = room, onValueChange = { room = it }, label = { Text("教室") }, singleLine = true)
         OutlinedTextField(value = teacher, onValueChange = { teacher = it }, label = { Text("教师") }, singleLine = true)
@@ -144,16 +183,34 @@ fun SessionEditorSheet(
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Button(
                 onClick = {
-                    onSave(name.trim(), weekday, startNode, endNode, weeksText, room.trim(), teacher.trim(), campus.trim())
+                    if (rescheduleMode) {
+                        onSaveReschedule?.invoke(
+                            rescheduleWeek.toIntOrNull() ?: 1,
+                            weekday,
+                            startNode,
+                            endNode,
+                            room.trim(),
+                            teacher.trim(),
+                            campus.trim(),
+                        )
+                    } else {
+                        onSave(name.trim(), weekday, startNode, endNode, weeksText, room.trim(), teacher.trim(), campus.trim())
+                    }
                 },
                 enabled = valid,
-            ) { Text("保存") }
+            ) { Text(if (rescheduleMode) "保存调课" else "保存") }
             OutlinedButton(onClick = onDismiss) { Text("取消") }
-            if (onDeleteSession != null) {
+            if (!rescheduleMode && onDeleteSession != null) {
                 TextButton(onClick = onDeleteSession) { Text("删除该时段") }
             }
         }
-        if (onDeleteSession != null) {
+        if (rescheduleMode) {
+            Text(
+                "原时段其余周次不变，仅所选这一周按上面的新时间/地点上课（带调课标记）；撤销可在编辑时段里改回",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else if (onDeleteSession != null) {
             Text(
                 "删除该学期的最后一个时段会连课程一起删除",
                 style = MaterialTheme.typography.labelSmall,

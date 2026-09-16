@@ -61,8 +61,25 @@ import javax.inject.Inject
 class SettingsViewModel @Inject constructor(
     private val repository: ScheduleRepository,
     private val settings: SettingsStore,
+    private val updateClient: io.github.zmdld11.shuschedule.data.update.UpdateCheckClient,
     private val widgetUpdater: io.github.zmdld11.shuschedule.widget.WidgetUpdater,
 ) : ViewModel() {
+
+    /** 手动检查更新：返回 消息 + 新版本页链接（null=已是最新或失败） */
+    fun checkUpdate(onResult: (String, String?) -> Unit) = viewModelScope.launch {
+        val latest = updateClient.fetchLatest()
+        when {
+            latest == null -> onResult("检查更新失败，请稍后再试", null)
+            io.github.zmdld11.shuschedule.data.update.UpdateChecker.isNewer(
+                io.github.zmdld11.shuschedule.BuildConfig.VERSION_NAME, latest.versionName,
+            ) -> onResult("发现新版本 ${latest.tagName}", latest.htmlUrl.ifBlank { latest.apkUrl })
+
+            else -> onResult(
+                "已是最新版本 v${io.github.zmdld11.shuschedule.BuildConfig.VERSION_NAME}",
+                null,
+            )
+        }
+    }
 
     val timeSlots: StateFlow<List<TimeSlot>> =
         repository.observeTimeSlots().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -229,6 +246,30 @@ fun SettingsScreen(
                     supportingContent = { Text("教务系统目前查不到冬季课表，学期列表默认隐藏；正在使用中的冬季不受影响") },
                     trailingContent = {
                         Switch(checked = showWinter, onCheckedChange = viewModel::setShowWinter)
+                    },
+                )
+            }
+            item { HorizontalDivider() }
+            item {
+                ListItem(
+                    headlineContent = { Text("检查更新") },
+                    supportingContent = { Text("从 GitHub Releases 检查新版本（每天启动时也会自动检查一次）") },
+                    modifier = Modifier.clickable {
+                        viewModel.checkUpdate { msg, url ->
+                            scope.launch {
+                                val result = snackbar.showSnackbar(msg, actionLabel = url?.let { "下载" })
+                                if (result == androidx.compose.material3.SnackbarResult.ActionPerformed && url != null) {
+                                    runCatching {
+                                        context.startActivity(
+                                            android.content.Intent(
+                                                android.content.Intent.ACTION_VIEW,
+                                                android.net.Uri.parse(url),
+                                            ),
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     },
                 )
             }
