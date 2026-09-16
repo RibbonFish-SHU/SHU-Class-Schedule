@@ -65,6 +65,10 @@ class ScheduleViewModel @Inject constructor(
 
     private val _semesterFlow = repository.observeActiveSemester()
 
+    /** 全部学期（顶栏快捷切换用） */
+    val semesters: StateFlow<List<Semester>> =
+        repository.observeSemesters().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     val state: StateFlow<ScheduleUiState> = _semesterFlow
         .flatMapLatest { semester ->
             if (semester == null) {
@@ -88,6 +92,15 @@ class ScheduleViewModel @Inject constructor(
 
     fun selectWeek(week: Int?) {
         selectedWeek.value = week?.let { it.coerceAtLeast(1) }
+    }
+
+    /** 顶栏快捷切换学期：整个 App 与小组件跟随激活学期 */
+    fun activateSemester(id: Long) {
+        viewModelScope.launch {
+            repository.activateSemester(id)
+            widgetUpdater.pushAll()
+            selectedWeek.value = null
+        }
     }
 
     fun showDetail(course: CourseWithSessions?) {
