@@ -3,14 +3,19 @@ package io.github.zmdld11.shuschedule.data.jwxk
 /**
  * 上大正方教务（jwxt.shu.edu.cn）导入契约。
  *
- * 设计原则（针对 Sleepy 在上大翻车的深路径/会话问题）：
- * - WebView 只打开根路径/登录页，用户手动登录，全程不跳转业务深链
+ * 设计原则：
+ * - WebView 入口落在课表查询页（issue #3 真机反馈采纳），未登录时教务自行重定向到
+ *   统一身份认证/登录页，用户手动登录后落回课表页；App 自身不主动跳转
  * - 数据获取一律在已登录页面的 JS 上下文里用同源 fetch，Cookie/Referer 自动携带
  *   （该路线与 SHU-jwxk-assistant 的直连 POST 等价，已长期验证）
  */
 object JwxkSpec {
 
     const val BASE_URL = "https://jwxt.shu.edu.cn"
+
+    /** 课表查询页：WebView 入口 */
+    const val SCHEDULE_PAGE_URL =
+        "https://jwxt.shu.edu.cn/jwglxt/kbcx/xskbcx_cxXskbcxIndex.html?gnmkdm=N2151&layout=default"
 
     /** 个人课表查询（POST，gnmkdm=N2151），xnm=学年起始年，xqm=学期编码（上大需探测） */
     private const val SCHEDULE_API = "/jwglxt/kbcx/xskbcx_cxXsgrkb.html?gnmkdm=N2151"

@@ -52,7 +52,11 @@ private fun AppNavHost(mainViewModel: MainViewModel) {
             SemestersScreen(onBack = { nav.popBackStack() })
         }
         composable("settings") {
-            SettingsScreen(onBack = { nav.popBackStack() }, mainViewModel = mainViewModel)
+            SettingsScreen(
+                onBack = { nav.popBackStack() },
+                onImport = { nav.navigate("import") },
+                mainViewModel = mainViewModel,
+            )
         }
     }
 }

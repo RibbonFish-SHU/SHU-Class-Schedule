@@ -151,7 +151,7 @@ fun ImportScreen(
                     Spacer(Modifier.height(4.dp))
                     Text(
                         text = when (state) {
-                            is ImportState.WaitingLogin -> "① 在下方网页用统一身份认证登录（账号即一卡通）；② 登录完成后点「开始抓取」。密码只进教务官网，本应用不保存。"
+                            is ImportState.WaitingLogin -> "① 在下方页面完成登录（会自动跳到统一身份认证，账号即一卡通）；② 登录后回到课表查询页，点「开始抓取」。密码只进教务官网，本应用不保存。"
                             is ImportState.Ready -> "已检测到登录态 ✓ 选择学年学期后点「开始抓取」"
                             else -> "正在抓取课表…"
                         },
@@ -173,7 +173,7 @@ fun ImportScreen(
                             settings.domStorageEnabled = true
                             webViewClient = WebViewClient()
                             addJavascriptInterface(bridge, ImportViewModel.BRIDGE_NAME)
-                            loadUrl(JwxkSpec.BASE_URL)
+                            loadUrl(JwxkSpec.SCHEDULE_PAGE_URL)
                             webView = this
                         }
                     },
