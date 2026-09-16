@@ -274,8 +274,24 @@ fun SettingsScreen(
                     headlineContent = { Text("关于") },
                     supportingContent = {
                         Text(
-                            "上大课表 v${io.github.zmdld11.shuschedule.BuildConfig.VERSION_NAME} · 开源仓库 zmdld11/SHU-Class-Schedule\n课表数据全部保存在本机"
+                            "上大课表 v${io.github.zmdld11.shuschedule.BuildConfig.VERSION_NAME} · 课表数据全部保存在本机"
                         )
+                    },
+                )
+            }
+            item {
+                ListItem(
+                    headlineContent = { Text("开源仓库") },
+                    supportingContent = { Text("zmdld11/SHU-Class-Schedule · MIT") },
+                    modifier = Modifier.clickable {
+                        runCatching {
+                            context.startActivity(
+                                android.content.Intent(
+                                    android.content.Intent.ACTION_VIEW,
+                                    android.net.Uri.parse("https://github.com/zmdld11/SHU-Class-Schedule"),
+                                ),
+                            )
+                        }
                     },
                 )
             }
