@@ -115,4 +115,48 @@ class TodayScheduleTest {
         val data = TodaySchedule.build(semester, courses, slots, overrides, now = wednesday, clock = LocalTime.of(9, 0))
         assertEquals(3, data.items.size)
     }
+
+    private val wedThuCourses = listOf(
+        course(CourseSession(courseId = 1, weekday = 3, startNode = 1, endNode = 2, weeksMask = week1, room = "A101", teacher = "早")),
+        course(CourseSession(courseId = 1, weekday = 4, startNode = 7, endNode = 8, weeksMask = week1, room = "B202", teacher = "明")),
+    )
+
+    @Test
+    fun `all done today switches to tomorrow preview`() {
+        val data = TodaySchedule.build(semester, wedThuCourses, slots, now = wednesday, clock = LocalTime.of(20, 0))
+        assertTrue(data.forTomorrow)
+        assertEquals(1, data.items.size)              // 明天(周四)的 7-8 节
+        assertEquals(7, data.items.single().startNode)
+        assertEquals(0, data.nextIndex)
+        assertTrue(data.weekLabel.startsWith("明天"))
+        assertFalse(data.inClass)
+    }
+
+    @Test
+    fun `tomorrow holiday keeps today ended state`() {
+        val overrides = listOf(DayOverride(semesterId = 1, week = 1, weekday = 4, mode = DayOverride.MODE_HOLIDAY))
+        val data = TodaySchedule.build(semester, wedThuCourses, slots, overrides, now = wednesday, clock = LocalTime.of(20, 0))
+        assertFalse(data.forTomorrow)
+        assertEquals(null, data.nextIndex)
+        assertEquals(0, data.upcomingItems.size)
+    }
+
+    @Test
+    fun `tomorrow without classes keeps today ended state`() {
+        // 原始 fixture 只有周三课，周四无课
+        val data = TodaySchedule.build(semester, courses, slots, now = wednesday, clock = LocalTime.of(20, 0))
+        assertFalse(data.forTomorrow)
+        assertEquals(0, data.upcomingItems.size)
+    }
+
+    @Test
+    fun `last day of semester does not peek beyond semester`() {
+        val lastDayCourses = listOf(
+            course(CourseSession(courseId = 1, weekday = 7, startNode = 1, endNode = 2, weeksMask = week1, room = "A101", teacher = "末")),
+        )
+        val lastSunday = LocalDate.of(2027, 1, 3) // 第16周周日
+        val data = TodaySchedule.build(semester, lastDayCourses, slots, now = lastSunday, clock = LocalTime.of(20, 0))
+        assertFalse(data.forTomorrow)
+        assertEquals(0, data.upcomingItems.size)
+    }
 }

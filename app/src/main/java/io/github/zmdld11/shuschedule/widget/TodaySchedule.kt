@@ -25,13 +25,15 @@ data class TodayItem(
 data class TodayData(
     val semesterName: String,
     val week: Int,
-    val weekLabel: String,   // "第3周 · 周三 9/16"
+    val weekLabel: String,   // "第3周 · 周三 9/16"；预览明天时以「明天 · …」开头
     val items: List<TodayItem>,
     /** 未结束的课程（已下课的剔除，列表小组件往上顶显示） */
     val upcomingItems: List<TodayItem>,
     /** items 中"接下来"那节的下标（正在上=该节；已全结束=null）；无课=null */
     val nextIndex: Int?,
     val inClass: Boolean,
+    /** 今日课全上完、已切换为明天的课表预览 */
+    val forTomorrow: Boolean = false,
 )
 
 object TodaySchedule {
@@ -49,40 +51,59 @@ object TodaySchedule {
         if (semester == null) {
             return TodayData("", 0, "未导入课表", emptyList(), emptyList(), null, inClass = false)
         }
-        val days = now.toEpochDay() - semester.startDateEpochDay
-        val week = ((days / 7) + 1).toInt().coerceIn(1, semester.totalWeeks)
-        val weekday = now.dayOfWeek.value // 1=周一
-        val inSemester = days >= 0 && week <= semester.totalWeeks
-
-        // 调休覆盖：放假=当天无课；调休补课=按来源星期取课
-        val todayOverride = overrides.firstOrNull { it.week == week && it.weekday == weekday }
-        val isHoliday = inSemester && todayOverride?.mode == DayOverride.MODE_HOLIDAY
-        val effectiveWeekday = if (inSemester && todayOverride?.mode == DayOverride.MODE_SUBSTITUTE && todayOverride.substituteWeekday in 1..7) {
-            todayOverride.substituteWeekday
-        } else {
-            weekday
-        }
-
         val slots = timeSlots.associateBy { it.node }
-        val items = if (isHoliday) {
-            emptyList()
-        } else {
-            courses
-                .flatMap { c -> c.sessions.filter { it.weekday == effectiveWeekday && (inSemester && it.hasWeek(week)) }.map { c to it } }
-                .sortedWith(compareBy({ (_, s) -> s.startNode }, { (c, _) -> c.course.name }))
-                .map { (c, s) ->
-                    TodayItem(
-                        name = c.course.name,
-                        startNode = s.startNode,
-                        endNode = s.endNode,
-                        startTime = slots[s.startNode]?.startTime ?: "",
-                        endTime = slots[s.endNode]?.endTime ?: "",
-                        place = listOf(s.campus.takeIf { it.isNotBlank() }, s.room.takeIf { it.isNotBlank() })
-                            .filterNotNull().joinToString("·"),
-                        teacher = s.teacher,
-                    )
-                }
+
+        fun itemsOf(date: LocalDate): Triple<Int, Boolean, List<TodayItem>> {
+            // returns (week, isHoliday, items)，学期外返回空
+            val days = date.toEpochDay() - semester.startDateEpochDay
+            val week = ((days / 7) + 1).toInt()
+            val inSemester = days >= 0 && week <= semester.totalWeeks
+            if (!inSemester) return Triple(week.coerceIn(1, semester.totalWeeks), false, emptyList())
+            val weekday = date.dayOfWeek.value
+            val override = overrides.firstOrNull { it.week == week && it.weekday == weekday }
+            val holiday = override?.mode == DayOverride.MODE_HOLIDAY
+            val effectiveWeekday = if (override?.mode == DayOverride.MODE_SUBSTITUTE && override.substituteWeekday in 1..7) {
+                override.substituteWeekday
+            } else {
+                weekday
+            }
+            val items = if (holiday) {
+                emptyList()
+            } else {
+                courses
+                    .flatMap { c -> c.sessions.filter { it.weekday == effectiveWeekday && it.hasWeek(week) }.map { c to it } }
+                    .sortedWith(compareBy({ (_, s) -> s.startNode }, { (c, _) -> c.course.name }))
+                    .map { (c, s) ->
+                        TodayItem(
+                            name = c.course.name,
+                            startNode = s.startNode,
+                            endNode = s.endNode,
+                            startTime = slots[s.startNode]?.startTime ?: "",
+                            endTime = slots[s.endNode]?.endTime ?: "",
+                            place = listOf(s.campus.takeIf { it.isNotBlank() }, s.room.takeIf { it.isNotBlank() })
+                                .filterNotNull().joinToString("·"),
+                            teacher = s.teacher,
+                        )
+                    }
+            }
+            return Triple(week, holiday, items)
         }
+
+        fun labelOf(date: LocalDate, week: Int, prefix: String, overridesApplied: DayOverride?): String = buildString {
+            append(prefix)
+            append("第${week}周 · 周${DAY_CHARS[date.dayOfWeek.value - 1]} ${date.monthValue}/${date.dayOfMonth}")
+            if (overridesApplied?.mode == DayOverride.MODE_HOLIDAY) append(" · 假期")
+            if (overridesApplied?.mode == DayOverride.MODE_SUBSTITUTE) {
+                append(" · 按周${DAY_CHARS[overridesApplied.substituteWeekday - 1]}上")
+            }
+        }
+
+        val week = ((now.toEpochDay() - semester.startDateEpochDay) / 7 + 1).toInt().coerceIn(1, semester.totalWeeks)
+        val weekday = now.dayOfWeek.value
+        val todayOverride = overrides.firstOrNull { it.week == week && it.weekday == weekday }
+        val isHoliday = todayOverride?.mode == DayOverride.MODE_HOLIDAY
+
+        val (todayWeek, _, items) = itemsOf(now)
 
         val hhmm = DateTimeFormatter.ofPattern("HH:mm")
         val nowStr = clock.format(hhmm)
@@ -98,22 +119,32 @@ object TodaySchedule {
             }
         }
 
-        // 时间感知：正在上的那节打标；已下课的剔除（时间未知的不剔除）
-        val marked = items.mapIndexed { i, item ->
-            item.copy(inProgress = i == nextIndex && inClass)
-        }
+        val marked = items.mapIndexed { i, item -> item.copy(inProgress = i == nextIndex && inClass) }
         val upcoming = marked.filter { it.endTime.isBlank() || nowStr <= it.endTime }
 
-        val label = buildString {
-            append("第${week}周 · 周${DAY_CHARS[weekday - 1]} ${now.monthValue}/${now.dayOfMonth}")
-            if (isHoliday) append(" · 假期")
-            if (todayOverride?.mode == DayOverride.MODE_SUBSTITUTE) append(" · 按周${DAY_CHARS[effectiveWeekday - 1]}上")
+        // 今天有课且全部上完（非假期）→ 明天还在学期内且有课时，预览明天的课表
+        if (!isHoliday && marked.isNotEmpty() && upcoming.isEmpty()) {
+            val tomorrow = now.plusDays(1)
+            val (tWeek, tHoliday, tItems) = itemsOf(tomorrow)
+            if (!tHoliday && tItems.isNotEmpty()) {
+                val tOverride = overrides.firstOrNull { it.week == tWeek && it.weekday == tomorrow.dayOfWeek.value }
+                return TodayData(
+                    semesterName = semester.displayName,
+                    week = tWeek,
+                    weekLabel = labelOf(tomorrow, tWeek, "明天 · ", tOverride),
+                    items = tItems,
+                    upcomingItems = tItems,
+                    nextIndex = 0,
+                    inClass = false,
+                    forTomorrow = true,
+                )
+            }
         }
 
         return TodayData(
             semesterName = semester.displayName,
-            week = week,
-            weekLabel = label,
+            week = todayWeek,
+            weekLabel = labelOf(now, todayWeek, "", todayOverride),
             items = marked,
             upcomingItems = upcoming,
             nextIndex = nextIndex,
