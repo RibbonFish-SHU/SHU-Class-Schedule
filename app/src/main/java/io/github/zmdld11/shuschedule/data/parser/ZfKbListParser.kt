@@ -98,6 +98,7 @@ object ZfKbListParser {
     /**
      * 调课消解：同学期同课、同星期同节次、周次有交集 → 视为冲突，
      * 保留周次覆盖更长的一条（常规记录通常带原教师且周次更长）；平手保留先出现的。
+     * 注意：仅在导入时执行，老版本导入的存量数据不回溯——需重新导入才生效。
      */
     private fun resolveConflicts(sessions: List<ParsedSession>): List<ParsedSession> {
         val result = mutableListOf<ParsedSession>()

@@ -2,6 +2,7 @@ package io.github.zmdld11.shuschedule.ui.schedule
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -40,11 +41,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -219,7 +222,29 @@ fun ScheduleScreen(
 
             // 网格主体
             val nodeCount = maxOf(state.timeSlots.size, state.courses.maxOfOrNull { c -> c.sessions.maxOfOrNull { it.endNode } ?: 0 } ?: 0, 10)
-            Row(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+            // 左滑下一周 / 右滑上一周（阈值防误触；垂直滚动不受影响）
+            val weekNow = rememberUpdatedState(week)
+            val totalWeeksNow = semester.totalWeeks
+            Row(
+                Modifier
+                    .fillMaxSize()
+                    .pointerInput(totalWeeksNow) {
+                        var acc = 0f
+                        val threshold = 40.dp.toPx()
+                        detectHorizontalDragGestures(
+                            onDragEnd = {
+                                if (acc <= -threshold) {
+                                    viewModel.selectWeek((weekNow.value + 1).coerceAtMost(totalWeeksNow))
+                                } else if (acc >= threshold) {
+                                    viewModel.selectWeek((weekNow.value - 1).coerceAtLeast(1))
+                                }
+                                acc = 0f
+                            },
+                            onDragCancel = { acc = 0f },
+                        ) { _, dragAmount -> acc += dragAmount }
+                    }
+                    .verticalScroll(rememberScrollState()),
+            ) {
                 // 左侧节次时间列
                 Column(Modifier.width(40.dp)) {
                     repeat(nodeCount) { i ->

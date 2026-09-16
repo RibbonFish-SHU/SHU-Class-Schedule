@@ -266,6 +266,8 @@ private fun PreviewContent(
 ) {
     var showDatePicker by remember { mutableStateOf(false) }
     var startDate by remember { mutableStateOf(preview.suggestedStart) }
+    var copied by remember { mutableStateOf(false) }
+    val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
 
     Column(modifier.fillMaxSize().padding(16.dp)) {
         Text("抓取成功，请核对", style = MaterialTheme.typography.titleLarge)
@@ -301,6 +303,10 @@ private fun PreviewContent(
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Button(onClick = { onConfirm(startDate) }) { Text("确认导入") }
             OutlinedButton(onClick = onCancel) { Text("返回") }
+            TextButton(onClick = {
+                clipboard.setText(androidx.compose.ui.text.AnnotatedString(preview.rawJson))
+                copied = true
+            }) { Text(if (copied) "已复制 ✓" else "复制原始数据") }
         }
     }
 
