@@ -27,8 +27,18 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            // 首发分发用 debug 签名（可直接安装）；正式 keystore 就绪后经 CI secrets 切换
-            signingConfig = signingConfigs.getByName("debug")
+            // 固定 release 签名（CI 经 KEYSTORE_FILE/KEYSTORE_PASSWORD/KEY_ALIAS 注入，
+            // 本地/未配置 secrets 时回退 debug 签名保证可构建）
+            signingConfig = if (hasTextEnv("KEYSTORE_FILE") && hasTextEnv("KEYSTORE_PASSWORD") && hasTextEnv("KEY_ALIAS")) {
+                signingConfigs.create("releaseFixed") {
+                    storeFile = file(System.getenv("KEYSTORE_FILE"))
+                    storePassword = System.getenv("KEYSTORE_PASSWORD")
+                    keyAlias = System.getenv("KEY_ALIAS")
+                    keyPassword = System.getenv("KEYSTORE_PASSWORD")
+                }
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
     compileOptions {
@@ -48,6 +58,8 @@ android {
         }
     }
 }
+
+private fun hasTextEnv(name: String): Boolean = !System.getenv(name).isNullOrBlank()
 
 dependencies {
     implementation(libs.androidx.core.ktx)
