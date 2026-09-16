@@ -18,6 +18,8 @@ class SettingsStore @Inject constructor(
 ) {
     private val dynamicColorKey = booleanPreferencesKey("dynamic_color")
     private val showOffWeekKey = booleanPreferencesKey("show_off_week")
+    private val showWeekendKey = booleanPreferencesKey("show_weekend")
+    private val showSlotEndKey = booleanPreferencesKey("show_slot_end")
 
     val dynamicColor: Flow<Boolean> = context.dataStore.data.map { it[dynamicColorKey] ?: true }
 
@@ -30,5 +32,19 @@ class SettingsStore @Inject constructor(
 
     suspend fun setShowOffWeek(value: Boolean) {
         context.dataStore.edit { it[showOffWeekKey] = value }
+    }
+
+    /** 周视图是否显示周六周日（上大绝大多数周末无课，默认只显示工作日 5 列） */
+    val showWeekend: Flow<Boolean> = context.dataStore.data.map { it[showWeekendKey] ?: false }
+
+    suspend fun setShowWeekend(value: Boolean) {
+        context.dataStore.edit { it[showWeekendKey] = value }
+    }
+
+    /** 节次时间列是否显示下课时间（每节固定 45 分钟，默认只显示开始时间） */
+    val showSlotEnd: Flow<Boolean> = context.dataStore.data.map { it[showSlotEndKey] ?: false }
+
+    suspend fun setShowSlotEnd(value: Boolean) {
+        context.dataStore.edit { it[showSlotEndKey] = value }
     }
 }

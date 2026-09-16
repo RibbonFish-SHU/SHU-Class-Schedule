@@ -71,13 +71,25 @@ class SettingsViewModel @Inject constructor(
         settings.dynamicColor.stateIn(viewModelScope, SharingStarted.Eagerly, true)
 
     val showOffWeek: StateFlow<Boolean> =
-        settings.showOffWeek.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+        settings.showOffWeek.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    val showWeekend: StateFlow<Boolean> =
+        settings.showWeekend.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    val showSlotEnd: StateFlow<Boolean> =
+        settings.showSlotEnd.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
     fun setShowOffWeek(value: Boolean) = viewModelScope.launch { settings.setShowOffWeek(value) }
 
     fun setDynamicColor(value: Boolean) = viewModelScope.launch { settings.setDynamicColor(value) }
 
+    fun setShowWeekend(value: Boolean) = viewModelScope.launch { settings.setShowWeekend(value) }
+
+    fun setShowSlotEnd(value: Boolean) = viewModelScope.launch { settings.setShowSlotEnd(value) }
+
     fun saveSlot(slot: TimeSlot) = viewModelScope.launch { repository.upsertTimeSlot(slot) }
+
+    fun resetSlots() = viewModelScope.launch { repository.resetTimeSlots() }
 
     fun exportTo(context: Context, uri: Uri, onResult: (Boolean) -> Unit) {
         viewModelScope.launch {
@@ -123,7 +135,10 @@ fun SettingsScreen(
     val timeSlots by viewModel.timeSlots.collectAsStateWithLifecycle()
     val dynamicColor by mainViewModel.dynamicColor.collectAsStateWithLifecycle()
     val showOffWeek by viewModel.showOffWeek.collectAsStateWithLifecycle()
+    val showWeekend by viewModel.showWeekend.collectAsStateWithLifecycle()
+    val showSlotEnd by viewModel.showSlotEnd.collectAsStateWithLifecycle()
     var editingSlot by remember { mutableStateOf<TimeSlot?>(null) }
+    var confirmingResetSlots by remember { mutableStateOf(false) }
 
     val exportLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json"),
@@ -183,7 +198,33 @@ fun SettingsScreen(
             }
             item { HorizontalDivider() }
             item {
+                ListItem(
+                    headlineContent = { Text("显示周六周日") },
+                    supportingContent = { Text("上大绝大多数周末无课，默认只显示工作日 5 列") },
+                    trailingContent = {
+                        Switch(checked = showWeekend, onCheckedChange = viewModel::setShowWeekend)
+                    },
+                )
+            }
+            item { HorizontalDivider() }
+            item {
+                ListItem(
+                    headlineContent = { Text("显示节次结束时间") },
+                    supportingContent = { Text("每节课固定 45 分钟，默认只显示开始时间") },
+                    trailingContent = {
+                        Switch(checked = showSlotEnd, onCheckedChange = viewModel::setShowSlotEnd)
+                    },
+                )
+            }
+            item { HorizontalDivider() }
+            item {
                 ListItem(headlineContent = { Text("节次时间") }, supportingContent = { Text("点击修改上下课时间") })
+            }
+            item {
+                TextButton(
+                    onClick = { confirmingResetSlots = true },
+                    modifier = Modifier.padding(start = 16.dp),
+                ) { Text("恢复默认（12 节）") }
             }
             items(timeSlots, key = { it.node }) { slot ->
                 ListItem(
@@ -223,6 +264,21 @@ fun SettingsScreen(
                 )
             }
         }
+    }
+
+    if (confirmingResetSlots) {
+        AlertDialog(
+            onDismissRequest = { confirmingResetSlots = false },
+            title = { Text("恢复默认节次？") },
+            text = { Text("将清空手动修改，恢复为上大 12 节默认作息。") },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.resetSlots()
+                    confirmingResetSlots = false
+                }) { Text("恢复") }
+            },
+            dismissButton = { TextButton(onClick = { confirmingResetSlots = false }) { Text("取消") } },
+        )
     }
 
     editingSlot?.let { slot ->

@@ -65,11 +65,16 @@ fun ScheduleScreen(
     val selectedWeek by viewModel.selectedWeek.collectAsStateWithLifecycle()
     val detail by viewModel.detailCourse.collectAsStateWithLifecycle()
     val showOffWeek by viewModel.showOffWeek.collectAsStateWithLifecycle()
+    val showWeekend by viewModel.showWeekend.collectAsStateWithLifecycle()
+    val showSlotEnd by viewModel.showSlotEnd.collectAsStateWithLifecycle()
 
     val currentWeek = state.currentWeek
     // 纯 Compose 派生：selectedWeek 只经追踪的 State 读，避免原始 Flow.value 读取与重组时序分歧
     val week = selectedWeek ?: currentWeek
     var showJumpDialog by remember { mutableStateOf(false) }
+
+    // 上大绝大多数周末无课：默认 5 列工作日，加宽课程块减少信息截断
+    val dayCount = if (showWeekend) 7 else 5
 
     val semester = state.semester
 
@@ -151,7 +156,7 @@ fun ScheduleScreen(
             val today = LocalDate.now()
             Row(Modifier.fillMaxWidth()) {
                 Spacer(Modifier.width(40.dp))
-                repeat(7) { i ->
+                repeat(dayCount) { i ->
                     val date = state.dateOf(week, i + 1)
                     val isToday = date == today
                     Column(
@@ -190,11 +195,18 @@ fun ScheduleScreen(
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
+                            if (showSlotEnd) {
+                                Text(
+                                    slot?.endTime ?: "",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
                         }
                     }
                 }
-                // 7 天课程列
-                repeat(7) { dayIdx ->
+                // 课程列（工作日 5 列，开关开周末 7 列）
+                repeat(dayCount) { dayIdx ->
                     val weekday = dayIdx + 1
                     val blocks = viewModel.blocksFor(week, weekday, showOffWeek)
                     Box(Modifier.weight(1f).height(CELL_HEIGHT * nodeCount)) {
@@ -220,17 +232,14 @@ fun ScheduleScreen(
                                         lineHeight = 12.sp,
                                         fontWeight = FontWeight.SemiBold,
                                         color = CoursePalette.onContainer(block.course.course.colorIndex),
-                                        maxLines = if (span >= 2) 3 else 1,
+                                        maxLines = if (span >= 2) 2 else 1,
                                         overflow = TextOverflow.Ellipsis,
                                     )
                                     if (span >= 2) {
-                                        val place = listOf(
-                                            block.session.campus.takeIf { it.isNotBlank() },
-                                            block.session.room.takeIf { it.isNotBlank() }?.let { "@$it" },
-                                        ).filterNotNull().joinToString("·")
-                                        if (place.isNotBlank()) {
+                                        // 教室/教师/校区各占一行：合行时教室会被省略号吃掉
+                                        if (block.session.room.isNotBlank()) {
                                             Text(
-                                                place,
+                                                "@${block.session.room}",
                                                 style = MaterialTheme.typography.labelSmall,
                                                 fontSize = 9.sp,
                                                 lineHeight = 11.sp,
@@ -242,6 +251,17 @@ fun ScheduleScreen(
                                         if (block.session.teacher.isNotBlank()) {
                                             Text(
                                                 block.session.teacher,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontSize = 9.sp,
+                                                lineHeight = 11.sp,
+                                                color = CoursePalette.onContainer(block.course.course.colorIndex),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                            )
+                                        }
+                                        if (span >= 3 && block.session.campus.isNotBlank()) {
+                                            Text(
+                                                block.session.campus,
                                                 style = MaterialTheme.typography.labelSmall,
                                                 fontSize = 9.sp,
                                                 lineHeight = 11.sp,
