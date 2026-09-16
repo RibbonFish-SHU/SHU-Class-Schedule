@@ -57,6 +57,8 @@ class TodayWidgetService : RemoteViewsService() {
                 setTextViewText(R.id.widget_item_time, if (item.startTime.isBlank()) "第${item.startNode}节" else "${item.startTime}\n${item.endTime}")
                 setTextViewText(R.id.widget_item_name, item.name)
                 setTextViewText(R.id.widget_item_info, listOf(item.place, item.teacher).filter { it.isNotBlank() }.joinToString(" · "))
+                // 配合 provider 端 setPendingIntentTemplate：点列表项也能打开应用
+                setOnClickFillInIntent(R.id.widget_item_root, Intent())
             }
         }
 

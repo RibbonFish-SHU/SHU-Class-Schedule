@@ -109,6 +109,9 @@ abstract class BaseTodayWidgetProvider : AppWidgetProvider() {
         val intent = Intent(context, TodayWidgetService::class.java)
         views.setRemoteAdapter(R.id.widget_list, intent)
         views.setEmptyView(R.id.widget_list, R.id.widget_empty)
+        // 列表项点击模板（item 侧 setOnClickFillInIntent）+ 空态也可点
+        views.setPendingIntentTemplate(R.id.widget_list, openAppIntent(context))
+        views.setOnClickPendingIntent(R.id.widget_empty, openAppIntent(context))
         manager.notifyAppWidgetViewDataChanged(appWidgetId, R.id.widget_list)
     }
 }

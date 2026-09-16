@@ -152,7 +152,7 @@ fun ScheduleScreen(
                         .clickable { showJumpDialog = true },
                     textAlign = TextAlign.Center,
                 )
-                if (selectedWeek != null) {
+                if (week != currentWeek) {
                     TextButton(onClick = { viewModel.selectWeek(null) }) { Text("回本周") }
                 }
                 TextButton(
@@ -268,7 +268,7 @@ fun ScheduleScreen(
                                                 overflow = TextOverflow.Ellipsis,
                                             )
                                         }
-                                        if (span >= 3 && block.session.campus.isNotBlank()) {
+                                        if (block.session.campus.isNotBlank()) {
                                             Text(
                                                 block.session.campus,
                                                 style = MaterialTheme.typography.labelSmall,
