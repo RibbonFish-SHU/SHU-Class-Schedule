@@ -38,6 +38,7 @@ class BackupCodecTest {
                         weeksMask = CourseSession.maskOf((1..8).toList()),
                         room = "BJ103",
                         teacher = "张三",
+                        campus = "宝山",
                     ),
                     CourseSession(
                         courseId = 1,
@@ -75,6 +76,7 @@ class BackupCodecTest {
 
         val mon = sessions.first { it.weekday == 1 }
         assertEquals("BJ103", mon.room)
+        assertEquals("宝山", mon.campus)
         assertEquals((1..8).toList(), CourseSession.weeksOf(mon.weeksMask).sorted())
         val wed = sessions.first { it.weekday == 3 }
         assertEquals((2..16 step 2).toList(), CourseSession.weeksOf(wed.weeksMask).sorted())
