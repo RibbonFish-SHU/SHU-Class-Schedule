@@ -1,6 +1,7 @@
 package io.github.zmdld11.shuschedule.data.repo
 
 import androidx.room.withTransaction
+import io.github.zmdld11.shuschedule.data.backup.BackupCodec
 import io.github.zmdld11.shuschedule.data.db.Course
 import io.github.zmdld11.shuschedule.data.db.CourseDao
 import io.github.zmdld11.shuschedule.data.db.CourseSession
@@ -46,6 +47,55 @@ class ScheduleRepository @Inject constructor(
         semesterDao.updateRange(id, startDateEpochDay, totalWeeks)
 
     suspend fun deleteSemester(id: Long) = semesterDao.delete(id)
+
+    /** 全量快照（备份导出用） */
+    suspend fun backupSnapshot(): BackupCodec.Snapshot = db.withTransaction {
+        val snapshot = mutableListOf<Pair<Semester, List<Pair<Course, List<CourseSession>>>>>()
+        for (semester in semesterDao.getAll()) {
+            val courses = courseDao.getSemesterCourses(semester.id).map { c ->
+                c.course to c.sessions
+            }
+            snapshot += semester to courses
+        }
+        BackupCodec.Snapshot(semesters = snapshot, timeSlots = timeSlotDao.getAll())
+    }
+
+    /** 从备份恢复（整库重建式写入，保留备份中的激活学期标记） */
+    suspend fun restoreBackup(snapshot: BackupCodec.Snapshot) = db.withTransaction {
+        val activeKey = snapshot.semesters
+            .firstOrNull { (s, _) -> s.isActive }
+            ?.let { (s, _) -> s.year to s.term }
+        snapshot.semesters.forEach { (semester, courses) ->
+            val existing = semesterDao.findByYearTerm(semester.year, semester.term)
+            val semesterId = if (existing != null) {
+                semesterDao.updateRange(existing.id, semester.startDateEpochDay, semester.totalWeeks)
+                existing.id
+            } else {
+                semesterDao.upsert(
+                    Semester(
+                        year = semester.year,
+                        term = semester.term,
+                        startDateEpochDay = semester.startDateEpochDay,
+                        totalWeeks = semester.totalWeeks,
+                    )
+                )
+            }
+            courseDao.deleteBySemester(semesterId)
+            courses.forEach { (course, sessions) ->
+                val courseId = courseDao.insertCourses(listOf(course.copy(semesterId = semesterId))).first()
+                courseDao.insertSessions(sessions.map { it.copy(courseId = courseId) })
+            }
+            if (timeSlotDao.getAll().isEmpty() && snapshot.timeSlots.isNotEmpty()) {
+                timeSlotDao.upsertAll(snapshot.timeSlots)
+            }
+        }
+        if (activeKey != null) {
+            val current = semesterDao.getAll().firstOrNull { it.isActive }
+            if (current == null) {
+                semesterDao.findByYearTerm(activeKey.first, activeKey.second)?.let { activateSemester(it.id) }
+            }
+        }
+    }
 
     /**
      * 导入解析后的课表：按 (year, term) 复用或新建学期，整体替换该学期的课程。
