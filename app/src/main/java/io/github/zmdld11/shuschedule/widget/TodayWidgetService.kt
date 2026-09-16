@@ -41,7 +41,8 @@ class TodayWidgetService : RemoteViewsService() {
                         repository.timeSlots(),
                     )
                 }
-                items = data.items
+                // 只显示未结束的课程（已下课的上移剔除），正在上的那节标注
+                items = data.upcomingItems
             }
         }
 
@@ -56,7 +57,11 @@ class TodayWidgetService : RemoteViewsService() {
             return RemoteViews(context.packageName, R.layout.widget_today_list_item).apply {
                 setTextViewText(R.id.widget_item_time, if (item.startTime.isBlank()) "第${item.startNode}节" else "${item.startTime}\n${item.endTime}")
                 setTextViewText(R.id.widget_item_name, item.name)
-                setTextViewText(R.id.widget_item_info, listOf(item.place, item.teacher).filter { it.isNotBlank() }.joinToString(" · "))
+                setTextViewText(
+                    R.id.widget_item_info,
+                    listOf(item.place, item.teacher, if (item.inProgress) "正在上课" else null)
+                        .filterNotNull().filter { it.isNotBlank() }.joinToString(" · "),
+                )
                 // 配合 provider 端 setPendingIntentTemplate：点列表项也能打开应用
                 setOnClickFillInIntent(R.id.widget_item_root, Intent())
             }

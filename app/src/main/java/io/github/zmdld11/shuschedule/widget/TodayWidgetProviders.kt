@@ -105,10 +105,20 @@ abstract class BaseTodayWidgetProvider : AppWidgetProvider() {
         views: RemoteViews,
         manager: AppWidgetManager,
         appWidgetId: Int,
+        data: TodayData,
     ) {
         val intent = Intent(context, TodayWidgetService::class.java)
         views.setRemoteAdapter(R.id.widget_list, intent)
         views.setEmptyView(R.id.widget_list, R.id.widget_empty)
+        // 空态区分「今天没课」与「课都上完了」
+        views.setTextViewText(
+            R.id.widget_empty,
+            when {
+                data.items.isEmpty() -> "今天没有课 🎉"
+                data.upcomingItems.isEmpty() -> "今日课程已结束"
+                else -> "今天没有课 🎉"
+            },
+        )
         // 列表项点击模板（item 侧 setOnClickFillInIntent）+ 空态也可点
         views.setPendingIntentTemplate(R.id.widget_list, openAppIntent(context))
         views.setOnClickPendingIntent(R.id.widget_empty, openAppIntent(context))
@@ -162,7 +172,7 @@ class TodayWidgetMediumProvider : BaseTodayWidgetProvider() {
     override fun buildViews(context: Context, data: TodayData, manager: AppWidgetManager, appWidgetId: Int): RemoteViews {
         val views = RemoteViews(context.packageName, R.layout.widget_today_list)
         headerViews(views, data)
-        bindList(context, views, manager, appWidgetId)
+        bindList(context, views, manager, appWidgetId, data)
         views.setOnClickPendingIntent(R.id.widget_list_root, openAppIntent(context))
         return views
     }
@@ -174,7 +184,7 @@ class TodayWidgetLargeProvider : BaseTodayWidgetProvider() {
     override fun buildViews(context: Context, data: TodayData, manager: AppWidgetManager, appWidgetId: Int): RemoteViews {
         val views = RemoteViews(context.packageName, R.layout.widget_today_list)
         headerViews(views, data)
-        bindList(context, views, manager, appWidgetId)
+        bindList(context, views, manager, appWidgetId, data)
         views.setOnClickPendingIntent(R.id.widget_list_root, openAppIntent(context))
         return views
     }

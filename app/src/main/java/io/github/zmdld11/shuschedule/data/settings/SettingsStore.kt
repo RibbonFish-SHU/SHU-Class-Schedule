@@ -3,6 +3,7 @@ package io.github.zmdld11.shuschedule.data.settings
 import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
@@ -55,5 +56,14 @@ class SettingsStore @Inject constructor(
 
     suspend fun setShowWinter(value: Boolean) {
         context.dataStore.edit { it[showWinterKey] = value }
+    }
+
+    /** 上次自动检查更新的日期（epoch day），用于每天最多检查一次 */
+    private val lastUpdateCheckDayKey = intPreferencesKey("last_update_check_day")
+
+    val lastUpdateCheckDay: Flow<Int> = context.dataStore.data.map { it[lastUpdateCheckDayKey] ?: 0 }
+
+    suspend fun setLastUpdateCheckDay(day: Int) {
+        context.dataStore.edit { it[lastUpdateCheckDayKey] = day }
     }
 }

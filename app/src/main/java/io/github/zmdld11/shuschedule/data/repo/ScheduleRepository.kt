@@ -127,6 +127,26 @@ class ScheduleRepository @Inject constructor(
     /** 删除整门课（时段级联删除） */
     suspend fun deleteCourse(courseId: Long) = courseDao.deleteCourse(courseId)
 
+    /**
+     * 手动调休：把 original 中第 week 周的一次课拆出来，换成 newSession（单周、带调课标记）。
+     * 原时段周次减去该周；减完为空则原位替换。
+     */
+    suspend fun rescheduleSession(
+        original: CourseSession,
+        week: Int,
+        newSession: CourseSession,
+    ) = db.withTransaction {
+        require(week in 1..CourseSession.MAX_WEEKS) { "周次越界: $week" }
+        val weekBit = 1 shl (week - 1)
+        val remaining = original.weeksMask and weekBit.inv()
+        if (remaining == 0) {
+            courseDao.updateSession(newSession.copy(id = original.id))
+        } else {
+            courseDao.updateSession(original.copy(weeksMask = remaining))
+            courseDao.insertSessions(listOf(newSession.copy(id = 0)))
+        }
+    }
+
     /** 全量快照（备份导出用） */
     suspend fun backupSnapshot(): BackupCodec.Snapshot = db.withTransaction {
         val snapshot = mutableListOf<Pair<Semester, List<Pair<Course, List<CourseSession>>>>>()
