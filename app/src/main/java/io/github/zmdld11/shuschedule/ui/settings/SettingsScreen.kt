@@ -215,7 +215,11 @@ fun SettingsScreen(
             item {
                 ListItem(
                     headlineContent = { Text("关于") },
-                    supportingContent = { Text("上大课表 v0.1.0 · 开源仓库 zmdld11/SHU-Class-Schedule\n课表数据全部保存在本机") },
+                    supportingContent = {
+                        Text(
+                            "上大课表 v${io.github.zmdld11.shuschedule.BuildConfig.VERSION_NAME} · 开源仓库 zmdld11/SHU-Class-Schedule\n课表数据全部保存在本机"
+                        )
+                    },
                 )
             }
         }
