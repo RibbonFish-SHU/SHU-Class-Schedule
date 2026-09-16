@@ -91,4 +91,54 @@ class ZfKbListParserTest {
         assertTrue(ZfKbListParser.parse("not json").isEmpty())
         assertTrue(ZfKbListParser.parse("""{"kbList": []}""").isEmpty())
     }
+
+    /** 调课消解（#18）：同学期同课同星期同节次、周次有交集时保留周次更长（原教师）记录 */
+    private val rescheduleFixture = """
+    {
+      "kbList": [
+        {
+          "kcmc": "计算机组成原理A(2)", "kch": "CS2002", "jxbmc": "计组-01", "jxb_id": "9200001",
+          "xm": "骆祥峰", "cdmc": "D417", "xqumc": "宝山主区",
+          "xqj": "3", "jcs": "7-8", "zcd": "1-16周", "xf": "4"
+        },
+        {
+          "kcmc": "计算机组成原理A(2)", "kch": "CS2002", "jxbmc": "计组-01", "jxb_id": "9200001",
+          "xm": "王欣芝", "cdmc": "D417", "xqumc": "宝山主区",
+          "xqj": "3", "jcs": "7-8", "zcd": "1-16周", "xf": "4"
+        },
+        {
+          "kcmc": "计算机组成原理A(2)", "kch": "CS2002", "jxbmc": "计组-01", "jxb_id": "9200001",
+          "xm": "王欣芝", "cdmc": "D417", "xqumc": "宝山主区",
+          "xqj": "5", "jcs": "3-4", "zcd": "6周", "xf": "4"
+        },
+        {
+          "kcmc": "计算机组成原理A(2)", "kch": "CS2002", "jxbmc": "计组-01", "jxb_id": "9200001",
+          "xm": "骆祥峰", "cdmc": "机房301", "xqumc": "宝山主区",
+          "xqj": "5", "jcs": "3-4", "zcd": "1-16周", "xf": "4"
+        },
+        {
+          "kcmc": "计算机组成原理A(2)", "kch": "CS2002", "jxbmc": "计组-01", "jxb_id": "9200001",
+          "xm": "王欣芝", "cdmc": "机房302", "xqumc": "宝山主区",
+          "xqj": "5", "jcs": "3-4", "zcd": "17-18周", "xf": "4"
+        }
+      ]
+    }
+    """.trimIndent()
+
+    @Test
+    fun keepsOriginalTeacherOnOverlappingConflict() {
+        val course = ZfKbListParser.parse(rescheduleFixture).single()
+        // 周三7-8：原教师 1-16周 与 现教师 1-16周 完全重叠 → 保留先出现的原教师
+        val wed = course.sessions.filter { it.weekday == 3 }
+        assertEquals(1, wed.size)
+        assertEquals("骆祥峰", wed[0].teacher)
+
+        // 周五3-4：调课单周(6周)先到，原教师 1-16周 后到但覆盖更长 → 替换之；
+        // 17-18周 与 1-16周 无交集（合法分段）→ 共存
+        val fri = course.sessions.filter { it.weekday == 5 }.sortedBy { CourseSession.weeksOf(it.weeksMask).min() }
+        assertEquals(2, fri.size)
+        assertEquals("骆祥峰", fri[0].teacher)
+        assertEquals(CourseSession.maskOf((1..16).toList()), fri[0].weeksMask)
+        assertEquals("王欣芝", fri[1].teacher)
+    }
 }
