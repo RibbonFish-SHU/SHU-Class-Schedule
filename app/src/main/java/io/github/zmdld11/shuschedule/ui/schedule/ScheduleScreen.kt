@@ -37,6 +37,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -63,6 +64,7 @@ fun ScheduleScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val selectedWeek by viewModel.selectedWeek.collectAsStateWithLifecycle()
     val detail by viewModel.detailCourse.collectAsStateWithLifecycle()
+    val showOffWeek by viewModel.showOffWeek.collectAsStateWithLifecycle()
 
     val currentWeek = state.currentWeek
     // 纯 Compose 派生：selectedWeek 只经追踪的 State 读，避免原始 Flow.value 读取与重组时序分歧
@@ -194,7 +196,7 @@ fun ScheduleScreen(
                 // 7 天课程列
                 repeat(7) { dayIdx ->
                     val weekday = dayIdx + 1
-                    val blocks = viewModel.blocksFor(week, weekday)
+                    val blocks = viewModel.blocksFor(week, weekday, showOffWeek)
                     Box(Modifier.weight(1f).height(CELL_HEIGHT * nodeCount)) {
                         blocks.forEach { block ->
                             val span = block.session.endNode - block.session.startNode + 1
@@ -204,6 +206,7 @@ fun ScheduleScreen(
                                     .fillMaxWidth()
                                     .height(CELL_HEIGHT * span - 2.dp)
                                     .padding(horizontal = 1.dp)
+                                    .alpha(if (block.inWeek) 1f else 0.35f)
                                     .clip(RoundedCornerShape(6.dp))
                                     .background(CoursePalette.container(block.course.course.colorIndex))
                                     .clickable { viewModel.showDetail(block.course) }

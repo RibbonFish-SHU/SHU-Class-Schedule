@@ -17,10 +17,18 @@ class SettingsStore @Inject constructor(
     @ApplicationContext private val context: Context,
 ) {
     private val dynamicColorKey = booleanPreferencesKey("dynamic_color")
+    private val showOffWeekKey = booleanPreferencesKey("show_off_week")
 
     val dynamicColor: Flow<Boolean> = context.dataStore.data.map { it[dynamicColorKey] ?: true }
 
     suspend fun setDynamicColor(value: Boolean) {
         context.dataStore.edit { it[dynamicColorKey] = value }
+    }
+
+    /** 周视图是否置灰显示非本周课程（默认隐藏） */
+    val showOffWeek: Flow<Boolean> = context.dataStore.data.map { it[showOffWeekKey] ?: false }
+
+    suspend fun setShowOffWeek(value: Boolean) {
+        context.dataStore.edit { it[showOffWeekKey] = value }
     }
 }
