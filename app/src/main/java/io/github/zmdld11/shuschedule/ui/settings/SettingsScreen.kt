@@ -178,7 +178,7 @@ fun SettingsScreen(
             item {
                 ListItem(
                     headlineContent = { Text("跟随系统动态取色") },
-                    supportingContent = { Text("Material You；关闭则使用上大蓝") },
+                    supportingContent = { Text("开启后配色跟随手机壁纸（Material You，Android 12+）；关闭则使用固定主题，按钮、今日高亮、开关等主色为上大蓝") },
                     trailingContent = {
                         Switch(checked = dynamicColor, onCheckedChange = viewModel::setDynamicColor)
                     },
