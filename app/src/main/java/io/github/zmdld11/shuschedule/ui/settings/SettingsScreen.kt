@@ -106,6 +106,7 @@ class SettingsViewModel @Inject constructor(
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit,
+    onImport: () -> Unit,
     mainViewModel: MainViewModel,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
@@ -152,6 +153,14 @@ fun SettingsScreen(
                     trailingContent = {
                         Switch(checked = dynamicColor, onCheckedChange = viewModel::setDynamicColor)
                     },
+                )
+            }
+            item { HorizontalDivider() }
+            item {
+                ListItem(
+                    headlineContent = { Text("从教务导入课表") },
+                    supportingContent = { Text("登录 jwxt.shu.edu.cn 抓取当前学年学期") },
+                    modifier = Modifier.clickable(onClick = onImport),
                 )
             }
             item { HorizontalDivider() }

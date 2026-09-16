@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  上大教务的登录跳转链路会经过明文 http 的统一身份认证页（http://jwxt.shu.edu.cn/sso/shulogin，
+  见 issue #3 真机反馈）。Android 9+ WebView 默认禁止明文流量，导致登录页无法加载。
+  仅对上大域名放行明文，其余域名维持系统默认（禁明文）。
+-->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">jwxt.shu.edu.cn</domain>
+        <domain includeSubdomains="true">shu.edu.cn</domain>
+    </domain-config>
+</network-security-config>
