@@ -5,6 +5,9 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import io.github.zmdld11.shuschedule.data.db.TermType
 import io.github.zmdld11.shuschedule.data.jwxk.JwxkSpec
+import io.github.zmdld11.shuschedule.data.jwxk.SemesterChoices
+import io.github.zmdld11.shuschedule.data.jwxk.SemesterOption
+import io.github.zmdld11.shuschedule.data.jwxk.SemesterOptionsParser
 import io.github.zmdld11.shuschedule.data.parser.ParsedCourse
 import io.github.zmdld11.shuschedule.data.parser.SemesterCodes
 import io.github.zmdld11.shuschedule.data.parser.ZfKbListParser
@@ -66,11 +69,22 @@ class ImportViewModel @Inject constructor(
     private val _fetchScript = MutableStateFlow<String?>(null)
     val fetchScript: StateFlow<String?> = _fetchScript.asStateFlow()
 
-    /** 学年（起始年）与学期选择 */
+    /** 登录成功后导航到课表查询页的一次性指令（去那读真实学期编码） */
+    private val _loadUrl = MutableStateFlow<String?>(null)
+    val loadUrl: StateFlow<String?> = _loadUrl.asStateFlow()
+
+    /** 教务页采集到的真实学年/学期选项；null = 还没读到 */
+    private val _semesterChoices = MutableStateFlow<SemesterChoices?>(null)
+    val semesterChoices: StateFlow<SemesterChoices?> = _semesterChoices.asStateFlow()
+
+    /** 采集超时放弃（回退硬编码候选） */
+    private val _harvestFailed = MutableStateFlow(false)
+    val harvestFailed: StateFlow<Boolean> = _harvestFailed.asStateFlow()
+
+    /** 学年（起始年）与学期选择（静态兜底用 TermType；动态模式用教务选项） */
     val selectedYear = MutableStateFlow(SemesterCodes.guess().first)
     val selectedTerm = MutableStateFlow(SemesterCodes.guess().second)
-
-    private var pendingPreview: ImportState.Preview? = null
+    val selectedTermOption = MutableStateFlow<SemesterOption?>(null)
 
     init {
         _loginProbeScript.value = JwxkSpec.loginProbeScript(BRIDGE_NAME)
@@ -80,18 +94,64 @@ class ImportViewModel @Inject constructor(
     fun onLoginProbe(loggedIn: Boolean) {
         if (_state.value is ImportState.WaitingLogin && loggedIn) {
             _state.value = ImportState.Ready
+            // 登录态已建立：去课表查询页读教务自己的学年/学期下拉（真实 xnm/xqm）
+            _loadUrl.value = JwxkSpec.INDEX_URL
         } else if (_state.value is ImportState.Ready && !loggedIn) {
             _state.value = ImportState.WaitingLogin
         }
     }
 
+    fun consumeLoadUrl() {
+        _loadUrl.value = null
+    }
+
+    /** 学期下拉采集回调；ok=false 表示页面还没渲染好，等下一轮 */
+    fun onSemesterJson(text: String) {
+        if (_semesterChoices.value != null) return
+        val choices = SemesterOptionsParser.parse(text) ?: return
+        _semesterChoices.value = choices
+        preselect(choices)
+    }
+
+    /** 采集轮询超时：回退静态编码选择 */
+    fun onHarvestGaveUp() {
+        if (_semesterChoices.value == null) _harvestFailed.value = true
+    }
+
+    private fun preselect(choices: SemesterChoices) {
+        val (guessYear, guessTerm) = SemesterCodes.guess()
+        val year = choices.years.firstOrNull { it.selected }
+            ?: choices.years.firstOrNull { it.value == guessYear }
+            ?: choices.years.maxByOrNull { it.value }
+        year?.let { selectedYear.value = it.value }
+
+        val term = choices.terms.firstOrNull { it.selected }
+            ?: choices.terms.firstOrNull {
+                SemesterOptionsParser.termTypeOf(it) == guessTerm
+            }
+            ?: choices.terms.firstOrNull()
+        selectedTermOption.value = term
+        term?.let { SemesterOptionsParser.termTypeOf(it)?.let { t -> selectedTerm.value = t } }
+    }
+
+    fun selectYearOption(option: SemesterOption) {
+        selectedYear.value = option.value
+    }
+
+    fun selectTermOption(option: SemesterOption) {
+        selectedTermOption.value = option
+        SemesterOptionsParser.termTypeOf(option)?.let { selectedTerm.value = it }
+    }
+
     fun startFetch() {
         if (_state.value is ImportState.Fetching) return
         _state.value = ImportState.Fetching
+        val code = selectedTermOption.value?.value
         _fetchScript.value = JwxkSpec.fetchScheduleScript(
             bridge = BRIDGE_NAME,
             xnm = selectedYear.value,
-            xqmCandidates = SemesterCodes.xqmCandidates(selectedTerm.value),
+            // 有教务真实编码就精确请求；没有才回退候选探测
+            xqmCandidates = code?.let { listOf(it) } ?: SemesterCodes.xqmCandidates(selectedTerm.value),
         )
     }
 
