@@ -69,6 +69,7 @@ abstract class BaseTodayWidgetProvider : AppWidgetProvider() {
                             semester,
                             repository.getSemesterCourses(semester.id),
                             repository.timeSlots(),
+                            repository.getDayOverrides(semester.id),
                         )
                     }
                 }.getOrElse { TodaySchedule.build(null, emptyList(), emptyList()) }

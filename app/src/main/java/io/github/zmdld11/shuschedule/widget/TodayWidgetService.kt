@@ -39,6 +39,7 @@ class TodayWidgetService : RemoteViewsService() {
                         semester,
                         repository.getSemesterCourses(semester.id),
                         repository.timeSlots(),
+                        repository.getDayOverrides(semester.id),
                     )
                 }
                 // 只显示未结束的课程（已下课的上移剔除），正在上的那节标注

@@ -1,6 +1,7 @@
 package io.github.zmdld11.shuschedule.widget
 
 import io.github.zmdld11.shuschedule.data.db.CourseSession
+import io.github.zmdld11.shuschedule.data.db.DayOverride
 import io.github.zmdld11.shuschedule.data.db.CourseWithSessions
 import io.github.zmdld11.shuschedule.data.db.Semester
 import io.github.zmdld11.shuschedule.data.db.TimeSlot
@@ -41,6 +42,7 @@ object TodaySchedule {
         semester: Semester?,
         courses: List<CourseWithSessions>,
         timeSlots: List<TimeSlot>,
+        overrides: List<DayOverride> = emptyList(),
         now: LocalDate = LocalDate.now(),
         clock: LocalTime = LocalTime.now(),
     ): TodayData {
@@ -52,32 +54,47 @@ object TodaySchedule {
         val weekday = now.dayOfWeek.value // 1=周一
         val inSemester = days >= 0 && week <= semester.totalWeeks
 
+        // 调休覆盖：放假=当天无课；调休补课=按来源星期取课
+        val todayOverride = overrides.firstOrNull { it.week == week && it.weekday == weekday }
+        val isHoliday = inSemester && todayOverride?.mode == DayOverride.MODE_HOLIDAY
+        val effectiveWeekday = if (inSemester && todayOverride?.mode == DayOverride.MODE_SUBSTITUTE && todayOverride.substituteWeekday in 1..7) {
+            todayOverride.substituteWeekday
+        } else {
+            weekday
+        }
+
         val slots = timeSlots.associateBy { it.node }
-        val items = courses
-            .flatMap { c -> c.sessions.filter { it.weekday == weekday && (inSemester && it.hasWeek(week)) }.map { c to it } }
-            .sortedWith(compareBy({ (_, s) -> s.startNode }, { (c, _) -> c.course.name }))
-            .map { (c, s) ->
-                TodayItem(
-                    name = c.course.name,
-                    startNode = s.startNode,
-                    endNode = s.endNode,
-                    startTime = slots[s.startNode]?.startTime ?: "",
-                    endTime = slots[s.endNode]?.endTime ?: "",
-                    place = listOf(s.campus.takeIf { it.isNotBlank() }, s.room.takeIf { it.isNotBlank() })
-                        .filterNotNull().joinToString("·"),
-                    teacher = s.teacher,
-                )
-            }
+        val items = if (isHoliday) {
+            emptyList()
+        } else {
+            courses
+                .flatMap { c -> c.sessions.filter { it.weekday == effectiveWeekday && (inSemester && it.hasWeek(week)) }.map { c to it } }
+                .sortedWith(compareBy({ (_, s) -> s.startNode }, { (c, _) -> c.course.name }))
+                .map { (c, s) ->
+                    TodayItem(
+                        name = c.course.name,
+                        startNode = s.startNode,
+                        endNode = s.endNode,
+                        startTime = slots[s.startNode]?.startTime ?: "",
+                        endTime = slots[s.endNode]?.endTime ?: "",
+                        place = listOf(s.campus.takeIf { it.isNotBlank() }, s.room.takeIf { it.isNotBlank() })
+                            .filterNotNull().joinToString("·"),
+                        teacher = s.teacher,
+                    )
+                }
+        }
 
         val hhmm = DateTimeFormatter.ofPattern("HH:mm")
         val nowStr = clock.format(hhmm)
         var nextIndex: Int? = null
         var inClass = false
-        for ((i, item) in items.withIndex()) {
-            if (item.endTime.isBlank()) continue
-            when {
-                nowStr <= item.startTime -> { nextIndex = i; inClass = false; break }
-                nowStr <= item.endTime -> { nextIndex = i; inClass = true; break }
+        if (!isHoliday) {
+            for ((i, item) in items.withIndex()) {
+                if (item.endTime.isBlank()) continue
+                when {
+                    nowStr <= item.startTime -> { nextIndex = i; inClass = false; break }
+                    nowStr <= item.endTime -> { nextIndex = i; inClass = true; break }
+                }
             }
         }
 
@@ -87,10 +104,16 @@ object TodaySchedule {
         }
         val upcoming = marked.filter { it.endTime.isBlank() || nowStr <= it.endTime }
 
+        val label = buildString {
+            append("第${week}周 · 周${DAY_CHARS[weekday - 1]} ${now.monthValue}/${now.dayOfMonth}")
+            if (isHoliday) append(" · 假期")
+            if (todayOverride?.mode == DayOverride.MODE_SUBSTITUTE) append(" · 按周${DAY_CHARS[effectiveWeekday - 1]}上")
+        }
+
         return TodayData(
             semesterName = semester.displayName,
             week = week,
-            weekLabel = "第${week}周 · 周${DAY_CHARS[weekday - 1]} ${now.monthValue}/${now.dayOfMonth}",
+            weekLabel = label,
             items = marked,
             upcomingItems = upcoming,
             nextIndex = nextIndex,

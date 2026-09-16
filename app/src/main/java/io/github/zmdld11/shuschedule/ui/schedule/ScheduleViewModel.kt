@@ -7,6 +7,7 @@ import io.github.zmdld11.shuschedule.BuildConfig
 import io.github.zmdld11.shuschedule.data.db.Course
 import io.github.zmdld11.shuschedule.data.db.CourseSession
 import io.github.zmdld11.shuschedule.data.db.CourseWithSessions
+import io.github.zmdld11.shuschedule.data.db.DayOverride
 import io.github.zmdld11.shuschedule.data.db.Semester
 import io.github.zmdld11.shuschedule.data.db.TermType
 import io.github.zmdld11.shuschedule.data.db.TimeSlot
@@ -24,6 +25,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -33,6 +35,8 @@ data class ScheduleUiState(
     val semester: Semester? = null,
     val courses: List<CourseWithSessions> = emptyList(),
     val timeSlots: List<TimeSlot> = emptyList(),
+    /** 调休覆盖：week → (weekday → override) */
+    val dayOverrides: Map<Int, Map<Int, DayOverride>> = emptyMap(),
 ) {
     val currentWeek: Int
         get() {
@@ -46,20 +50,33 @@ data class ScheduleUiState(
         val s = semester ?: return null
         return LocalDate.ofEpochDay(s.startDateEpochDay + (week - 1) * 7L + (weekday - 1))
     }
+
+    fun overrideOf(week: Int, weekday: Int): DayOverride? = dayOverrides[week]?.get(weekday)
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class ScheduleViewModel @Inject constructor(
+    @dagger.hilt.android.qualifiers.ApplicationContext context: android.content.Context,
     private val repository: ScheduleRepository,
     private val widgetUpdater: WidgetUpdater,
     private val updateClient: UpdateCheckClient,
     settings: SettingsStore,
 ) : ViewModel() {
 
+    /** 课表背景图路径（未设置或文件丢失为 null） */
+    val scheduleBackgroundPath: StateFlow<String?> =
+        settings.scheduleBackgroundEnabled
+            .map { enabled ->
+                val f = java.io.File(context.filesDir, "schedule_background.jpg")
+                if (enabled && f.exists()) f.absolutePath else null
+            }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
     init {
-        // 启动自动检查更新（每天最多一次，失败静默）
+        // 启动自动检查更新（开关可关；开了也每天最多一次，失败静默）
         viewModelScope.launch {
+            if (!settings.autoUpdateCheck.first()) return@launch
             val today = java.time.LocalDate.now().toEpochDay().toInt()
             val last = settings.lastUpdateCheckDay.first()
             if (today - last >= 1) {
@@ -108,8 +125,16 @@ class ScheduleViewModel @Inject constructor(
                 kotlinx.coroutines.flow.combine(
                     repository.observeCourses(semester.id),
                     repository.observeTimeSlots(),
-                ) { courses, slots ->
-                    ScheduleUiState(semester, courses, slots)
+                    repository.observeDayOverrides(semester.id),
+                ) { courses, slots, overrides ->
+                    ScheduleUiState(
+                        semester = semester,
+                        courses = courses,
+                        timeSlots = slots,
+                        dayOverrides = overrides.groupBy({ it.week }, { it }).mapValues { (_, list) ->
+                            list.associateBy { it.weekday }
+                        },
+                    )
                 }
             }
         }
@@ -306,6 +331,15 @@ class ScheduleViewModel @Inject constructor(
 
     fun blocksFor(week: Int, weekday: Int, includeOffWeek: Boolean = false): List<DayBlock> =
         filterBlocks(state.value.courses, week, weekday, includeOffWeek)
+
+    /** 设置/清除某天的调休覆盖（mode<0=恢复正常），写入后同步小组件 */
+    fun setDayOverride(week: Int, weekday: Int, mode: Int, substituteWeekday: Int = 0) {
+        val semester = state.value.semester ?: return
+        viewModelScope.launch {
+            repository.setDayOverride(semester.id, week, weekday, mode, substituteWeekday)
+            widgetUpdater.pushAll()
+        }
+    }
 }
 
 /** 纯函数便于单测：按周/星期过滤排课块

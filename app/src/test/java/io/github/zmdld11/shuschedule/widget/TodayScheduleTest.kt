@@ -2,6 +2,7 @@ package io.github.zmdld11.shuschedule.widget
 
 import io.github.zmdld11.shuschedule.data.db.Course
 import io.github.zmdld11.shuschedule.data.db.CourseSession
+import io.github.zmdld11.shuschedule.data.db.DayOverride
 import io.github.zmdld11.shuschedule.data.db.CourseWithSessions
 import io.github.zmdld11.shuschedule.data.db.Semester
 import io.github.zmdld11.shuschedule.data.db.TermType
@@ -81,5 +82,37 @@ class TodayScheduleTest {
         val noSlots = emptyList<TimeSlot>()
         val data = TodaySchedule.build(semester, courses, noSlots, now = wednesday, clock = LocalTime.of(23, 0))
         assertEquals(3, data.upcomingItems.size) // 时间未知 → 不剔除
+    }
+
+    @Test
+    fun `holiday override yields empty day and label`() {
+        val overrides = listOf(
+            DayOverride(semesterId = 1, week = 1, weekday = 3, mode = DayOverride.MODE_HOLIDAY),
+        )
+        val data = TodaySchedule.build(semester, courses, slots, overrides, now = wednesday, clock = LocalTime.of(9, 0))
+        assertEquals(0, data.items.size)
+        assertEquals(0, data.upcomingItems.size)
+        assertTrue(data.weekLabel.contains("假期"))
+    }
+
+    @Test
+    fun `substitute override renders source weekday sessions`() {
+        // 周六（weekday=6）没有排课记录；设为按周三上 → 应渲染周三的三节课
+        val overrides = listOf(
+            DayOverride(semesterId = 1, week = 1, weekday = 6, mode = DayOverride.MODE_SUBSTITUTE, substituteWeekday = 3),
+        )
+        val saturday = LocalDate.of(2026, 9, 19)
+        val data = TodaySchedule.build(semester, courses, slots, overrides, now = saturday, clock = LocalTime.of(8, 0))
+        assertEquals(3, data.items.size)
+        assertTrue(data.weekLabel.contains("按周三上"))
+    }
+
+    @Test
+    fun `override outside current week is ignored`() {
+        val overrides = listOf(
+            DayOverride(semesterId = 1, week = 2, weekday = 3, mode = DayOverride.MODE_HOLIDAY),
+        )
+        val data = TodaySchedule.build(semester, courses, slots, overrides, now = wednesday, clock = LocalTime.of(9, 0))
+        assertEquals(3, data.items.size)
     }
 }
