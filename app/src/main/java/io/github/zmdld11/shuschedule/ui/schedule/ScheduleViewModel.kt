@@ -8,6 +8,7 @@ import io.github.zmdld11.shuschedule.data.db.CourseWithSessions
 import io.github.zmdld11.shuschedule.data.db.Semester
 import io.github.zmdld11.shuschedule.data.db.TimeSlot
 import io.github.zmdld11.shuschedule.data.repo.ScheduleRepository
+import io.github.zmdld11.shuschedule.data.settings.SettingsStore
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -43,7 +44,12 @@ data class ScheduleUiState(
 @HiltViewModel
 class ScheduleViewModel @Inject constructor(
     private val repository: ScheduleRepository,
+    settings: SettingsStore,
 ) : ViewModel() {
+
+    /** 周视图是否置灰显示非本周课程 */
+    val showOffWeek: StateFlow<Boolean> =
+        settings.showOffWeek.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
     private val _semesterFlow = repository.observeActiveSemester()
 
@@ -76,17 +82,29 @@ class ScheduleViewModel @Inject constructor(
         _detailCourse.value = course
     }
 
-    /** 某周某天的课程块：CourseSession + 对应 Course */
+    /** 某周某天的课程块：CourseSession + 对应 Course；inWeek=该周是否上这节课 */
     data class DayBlock(
         val course: CourseWithSessions,
         val session: CourseSession,
+        val inWeek: Boolean,
     )
 
-    fun blocksFor(week: Int, weekday: Int): List<DayBlock> =
-        state.value.courses
-            .flatMap { c -> c.sessions.map { DayBlock(c, it) } }
-            .filter { it.session.weekday == weekday && it.session.hasWeek(week) }
-            .sortedWith(compareBy({ it.session.startNode }, { it.course.course.name }))
+    fun blocksFor(week: Int, weekday: Int, includeOffWeek: Boolean = false): List<DayBlock> =
+        filterBlocks(state.value.courses, week, weekday, includeOffWeek)
+}
+
+/** 纯函数便于单测：按周/星期过滤排课块 */
+fun filterBlocks(
+    courses: List<CourseWithSessions>,
+    week: Int,
+    weekday: Int,
+    includeOffWeek: Boolean,
+): List<ScheduleViewModel.DayBlock> {
+    val all = courses
+        .flatMap { c -> c.sessions.map { ScheduleViewModel.DayBlock(c, it, it.hasWeek(week)) } }
+        .filter { it.session.weekday == weekday }
+    return (if (includeOffWeek) all else all.filter { it.inWeek })
+        .sortedWith(compareBy({ it.session.startNode }, { it.course.course.name }))
 }
 
 /** 周视图课程色板（8 色，colorIndex 取模） */

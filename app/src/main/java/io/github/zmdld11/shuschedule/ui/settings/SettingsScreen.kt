@@ -69,6 +69,11 @@ class SettingsViewModel @Inject constructor(
     val dynamicColor: StateFlow<Boolean> =
         settings.dynamicColor.stateIn(viewModelScope, SharingStarted.Eagerly, true)
 
+    val showOffWeek: StateFlow<Boolean> =
+        settings.showOffWeek.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    fun setShowOffWeek(value: Boolean) = viewModelScope.launch { settings.setShowOffWeek(value) }
+
     fun setDynamicColor(value: Boolean) = viewModelScope.launch { settings.setDynamicColor(value) }
 
     fun saveSlot(slot: TimeSlot) = viewModelScope.launch { repository.upsertTimeSlot(slot) }
@@ -115,6 +120,7 @@ fun SettingsScreen(
     val scope = rememberCoroutineScope()
     val timeSlots by viewModel.timeSlots.collectAsStateWithLifecycle()
     val dynamicColor by mainViewModel.dynamicColor.collectAsStateWithLifecycle()
+    val showOffWeek by viewModel.showOffWeek.collectAsStateWithLifecycle()
     var editingSlot by remember { mutableStateOf<TimeSlot?>(null) }
 
     val exportLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
@@ -161,6 +167,16 @@ fun SettingsScreen(
                     headlineContent = { Text("从教务导入课表") },
                     supportingContent = { Text("登录 jwxt.shu.edu.cn 抓取当前学年学期") },
                     modifier = Modifier.clickable(onClick = onImport),
+                )
+            }
+            item { HorizontalDivider() }
+            item {
+                ListItem(
+                    headlineContent = { Text("显示非本周课程") },
+                    supportingContent = { Text("开启后周视图以置灰样式显示本周不上的课") },
+                    trailingContent = {
+                        Switch(checked = showOffWeek, onCheckedChange = viewModel::setShowOffWeek)
+                    },
                 )
             }
             item { HorizontalDivider() }
