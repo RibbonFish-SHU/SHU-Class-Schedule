@@ -48,6 +48,8 @@ class ScheduleRepository @Inject constructor(
 
     suspend fun deleteSemester(id: Long) = semesterDao.delete(id)
 
+    suspend fun upsertTimeSlot(slot: TimeSlot) = timeSlotDao.upsertAll(listOf(slot))
+
     /** 全量快照（备份导出用） */
     suspend fun backupSnapshot(): BackupCodec.Snapshot = db.withTransaction {
         val snapshot = mutableListOf<Pair<Semester, List<Pair<Course, List<CourseSession>>>>>()
